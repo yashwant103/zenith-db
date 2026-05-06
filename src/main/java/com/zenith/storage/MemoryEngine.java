@@ -1,6 +1,9 @@
 package com.zenith.storage;
 
 
+import com.zenith.wal.WriteAheadLog;
+
+import java.io.IOException;
 import java.util.concurrent.*;
 public class MemoryEngine {
 
@@ -14,7 +17,7 @@ public class MemoryEngine {
         tradeStorer.putIfAbsent(trade.tradeId(),trade);
     }
 
-    public boolean updateTradeStatus(String tradeId, String newStatus){
+    public boolean updateTradeStatus(String tradeId, String newStatus, WriteAheadLog wal) throws IOException {
 
         Trade oldtrade= tradeStorer.get(tradeId);
 
@@ -28,6 +31,7 @@ public class MemoryEngine {
                 oldtrade.price(),
                 newStatus
         );
+        wal.appendTrade(newTrade);
         return tradeStorer.replace(tradeId,oldtrade,newTrade    );
     }
     public void restoredtrade(Trade trade){
