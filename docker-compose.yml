@@ -1,0 +1,92 @@
+version: '3.8'
+
+# Named volumes — WAL data survives container restarts
+volumes:
+  node-a-data:
+  node-b-data:
+  node-c-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  zenith-net:
+    driver: bridge
+
+services:
+
+  node-a:
+    build: .
+    container_name: zenith-node-a
+    ports:
+      - "9001:9001"   # Raft + client commands
+      - "8081:8080"   # Metrics (host:8081 → container:8080)
+    command: ["Node-A", "9001", "node-b:9002", "node-c:9003"]
+    # FIX: WAL persists across restarts — without this zenith_db.log is lost on restart
+    volumes:
+      - node-a-data:/data
+    networks:
+      - zenith-net
+    restart: unless-stopped
+
+  node-b:
+    build: .
+    container_name: zenith-node-b
+    ports:
+      - "9002:9002"
+      - "8082:8080"
+    command: ["Node-B", "9002", "node-a:9001", "node-c:9003"]
+    volumes:
+      - node-b-data:/data
+    networks:
+      - zenith-net
+    restart: unless-stopped
+    depends_on:
+      - node-a
+
+  node-c:
+    build: .
+    container_name: zenith-node-c
+    ports:
+      - "9003:9003"
+      - "8083:8080"
+    command: ["Node-C", "9003", "node-a:9001", "node-b:9002"]
+    volumes:
+      - node-c-data:/data
+    networks:
+      - zenith-net
+    restart: unless-stopped
+    depends_on:
+      - node-b
+
+  prometheus:
+    # FIX: pinned version — 'latest' can break on next pull
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - zenith-net
+    restart: unless-stopped
+
+  grafana:
+    # FIX: pinned version
+    image: grafana/grafana:10.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./monitoring/grafana-dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml:ro
+      - ./monitoring/zenith-dashboard.json:/var/lib/grafana/dashboards/zenith-dashboard.json:ro
+    depends_on:
+      - prometheus
+    networks:
+      - zenith-net
+    restart: unless-stopped
