@@ -7,7 +7,6 @@ import com.zenith.raft.rpc.RaftMessage;
 import com.zenith.storage.MemoryEngine;
 import com.zenith.storage.Trade;
 import com.zenith.wal.WriteAheadLog;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -50,7 +49,7 @@ public class ZenithServer {
     private final ZenithMetrics metrics;
 
     // FIX BUG 1: 64KB buffer handles any realistic Raft JSON message
-    private static final int BUFFER_SIZE = 65536;
+    private static final int    BUFFER_SIZE = 65536;
 
     public ZenithServer(MemoryEngine engine, WriteAheadLog log, RaftNode raftNode, ZenithMetrics metrics) {
         this.engine   = engine;
