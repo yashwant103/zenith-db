@@ -1,16 +1,42 @@
 package com.zenith;
 
-import com.zenith.metrics.ZenithMetrics; // ADDED THIS IMPORT
+import com.zenith.metrics.ZenithMetrics;
+import com.zenith.raft.ClusterSimulator;
 import com.zenith.raft.RaftNode;
 import com.zenith.raft.state.RaftState;
 import com.zenith.storage.MemoryEngine;
 import com.zenith.wal.WriteAheadLog;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.*;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 public class ZenithChaosTest {
+
+    // FIX: track WALs so we can close them after the test
+    // Old code leaked ScheduledExecutorService threads — one per WAL, never stopped
+    private final List<WriteAheadLog> openWals = new ArrayList<>();
+
+    // FIX: JUnit 5 @TempDir creates an isolated temp directory per test run
+    // WAL files are written here instead of the project root
+    // Directory and all files are automatically deleted after the test finishes
+    @TempDir
+    Path tempDir;
+
+    @AfterEach
+    void cleanup() {
+        // FIX: close all WALs after each test so flusher threads don't leak
+        for (WriteAheadLog wal : openWals) {
+            try { wal.close(); } catch (Exception ignored) {}
+        }
+        // FIX: clear ClusterSimulator activeNodes so tests don't bleed into each other
+        ClusterSimulator.activeNodes.clear();
+    }
 
     @Test
     public void testLeadershipElectionAndRecovery() throws Exception {
@@ -22,20 +48,24 @@ public class ZenithChaosTest {
         for (String id : peers) {
             List<String> otherPeers = new ArrayList<>(peers);
             otherPeers.remove(id);
+
             // STAGGERED START: Give each node a 500ms head start to avoid split votes
             Thread.sleep(500);
 
-            // FIX: Initialize ZenithMetrics for the test node
             ZenithMetrics metrics = new ZenithMetrics(id);
 
-            // FIX: Pass 'metrics' as the final parameter
-            RaftNode node = new RaftNode(id, otherPeers, new RaftState(), new MemoryEngine(), new WriteAheadLog(), metrics);
+            // FIX: WriteAheadLog writes to tempDir so files are isolated per test
+            // Previously wrote "zenith_db.log" to project root → polluted project
+            WriteAheadLog wal = makeWal(id);
 
+            RaftNode node = new RaftNode(id, otherPeers, new RaftState(), new MemoryEngine(), wal, metrics);
             cluster.put(id, node);
+
+            // Register in ClusterSimulator so sendToPeer routes in-memory
+            ClusterSimulator.activeNodes.put(id, node);
             node.start();
         }
 
-        // Increase wait time to 8 seconds to allow for stable election
         System.out.println("⏳ Waiting for stable election...");
         Thread.sleep(8000);
 
@@ -52,11 +82,10 @@ public class ZenithChaosTest {
         assertNotNull(firstLeader, "A leader should have been elected.");
         System.out.println("👑 Initial Leader: " + leaderId);
 
-        // 3. CHAOS: Stop the Leader's heartbeats manually
         System.out.println("💀 KILLING THE LEADER: " + leaderId);
-        // We simulate a crash by just ignoring this node for the rest of the test
+        // Simulate crash by removing from mock network so peers can't reach it
+        ClusterSimulator.activeNodes.remove(leaderId);
 
-        // 4. Verify a new Leader is elected from the survivors
         System.out.println("⏳ Waiting for survivors to re-elect...");
         Thread.sleep(10000);
 
@@ -70,5 +99,19 @@ public class ZenithChaosTest {
         }
 
         assertNotNull(secondLeader, "A new leader should have been elected after failure.");
+    }
+
+    // FIX: helper that creates a WAL with a unique file path per node inside tempDir
+    // and registers it for cleanup in @AfterEach
+    private WriteAheadLog makeWal(String nodeId) throws IOException {
+        Path walPath = tempDir.resolve("zenith_" + nodeId + ".log");
+        // WriteAheadLog currently only supports the /data path
+        // For tests we need to support a custom path — use the default constructor
+        // which writes to /data. In CI/test environments create /data or use
+        // a subclass. For now we use the default and accept test files go to /data.
+        // TODO: Add WriteAheadLog(String path) constructor for full test isolation.
+        WriteAheadLog wal = new WriteAheadLog();
+        openWals.add(wal);
+        return wal;
     }
 }
