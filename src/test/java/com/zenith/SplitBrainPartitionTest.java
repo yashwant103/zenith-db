@@ -145,16 +145,26 @@ public class SplitBrainPartitionTest {
         Map<String, RaftNode> cluster = buildCluster(3);
         Thread.sleep(7000);
 
-        // Isolate one node entirely — it can only ever get 1 vote (its own),
-        // never a majority of 3 — it must never become leader, no matter how
-        // many times its own election timer fires.
-        String victim = cluster.keySet().iterator().next();
+        // FIX: must isolate a guaranteed FOLLOWER, not an arbitrary node. If
+        // the chosen node already happened to be the leader at isolation
+        // time, it correctly keeps reporting isLeader()==true afterward —
+        // a leader only steps down upon seeing a higher term from someone
+        // else, and full isolation means it never sees one. That's correct
+        // Raft behavior (and exactly why the leader-lease read-safety check
+        // exists), not a bug — asserting isLeader()==false in that case was
+        // testing the wrong thing. The actual property under test is "an
+        // isolated node can never WIN a *new* election," so pick a follower.
+        String victim = null;
+        for (var e : cluster.entrySet()) {
+            if (!e.getValue().isLeader()) { victim = e.getKey(); break; }
+        }
+        assertNotNull(victim, "expected at least one follower in a stable 3-node cluster");
         isolate(victim);
 
         Thread.sleep(15000); // give it several full election-timeout cycles to (fail to) win
 
         assertFalse(cluster.get(victim).isLeader(),
-                "an isolated minority node (1 of 3) must never become leader");
+                "an isolated minority node (1 of 3) must never WIN a new election while cut off");
     }
 
     @Test
