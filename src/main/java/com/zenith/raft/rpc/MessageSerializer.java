@@ -1,61 +1,3 @@
-//package com.zenith.raft.rpc;
-//
-//import com.fasterxml.jackson.core.JsonProcessingException;
-//import com.fasterxml.jackson.databind.ObjectMapper;
-//
-//public class MessageSerializer {
-//
-//    // A single, reusable ObjectMapper instance (Thread-safe and fast)
-//    private static final ObjectMapper mapper = new ObjectMapper();
-//
-//    // Convert a Java Object (VoteRequest/VoteResponse) into a JSON String
-//    public static String serialize(RaftMessage message) {
-//        try {
-//            return mapper.writeValueAsString(message);
-//        } catch (JsonProcessingException e) {
-//            System.err.println("Failed to serialize message: " + e.getMessage());
-//            return null;
-//        }
-//    }
-//
-//    // Convert a JSON String back into the correct Java Object
-//    public static RaftMessage deserialize(String json) {
-//        try {
-//            // Notice we tell Jackson to build a base 'RaftMessage'
-//            // Jackson will look at the "type" field in the JSON to figure out the exact subclass!
-//            return mapper.readValue(json, RaftMessage.class);
-//        } catch (JsonProcessingException e) {
-//            System.err.println("Failed to deserialize JSON: " + e.getMessage());
-//            return null;
-//        }
-//    }
-//
-//    // --- QUICK TEST ---
-//    public static void main(String[] args) {
-//        System.out.println("Testing Jackson Polymorphic Serialization...");
-//
-//        // 1. Create a mock VoteRequest
-//        VoteRequest req = new VoteRequest("Node-A", 5, 100, 4);
-//
-//        // 2. Serialize to JSON
-//        String json = serialize(req);
-//        System.out.println("Outgoing Network String: " + json);
-//
-//        // 3. Deserialize back to Java Object
-//        RaftMessage restoredMsg = deserialize(json);
-//
-//        // 4. Verify Jackson figured out the subclass automatically!
-//        if (restoredMsg instanceof VoteRequest) {
-//            VoteRequest restoredReq = (VoteRequest) restoredMsg;
-//            System.out.println("Success! Jackson auto-detected a VoteRequest.");
-//            System.out.println("Restored Sender ID: " + restoredReq.senderId);
-//            System.out.println("Restored Last Log Index: " + restoredReq.lastLogIndex);
-//        } else {
-//            System.out.println("Failed! Jackson didn't build the right object.");
-//        }
-//    }
-//}
-
 package com.zenith.raft.rpc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,14 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * MessageSerializer — converts RaftMessage objects ↔ JSON bytes.
  *
- * THIS IS THE MISSING FILE from your IntelliJ structure.
- * Your folder showed MessageSerializer but it contained Main.java code.
- *
- * WHY IS THIS NEEDED?
- * Java sockets send/receive bytes — not objects.
- * When node-1 sends a VoteRequest to node-2:
- *   node-1: VoteRequest object → serialize → bytes → socket
- *   node-2: socket → bytes → deserialize → VoteRequest object
+ * NOTE: this is NOT used for peer-to-peer Raft RPC traffic anymore — that
+ * path now uses BinaryMessageCodec (a genuine binary encoding, no JSON).
+ * This class is kept because it's still referenced by SerializerTest.java
+ * and AppendEntriesTest.java (ad-hoc smoke-test mains, not JUnit), and JSON
+ * round-tripping remains a reasonable debug/tooling utility on its own —
+ * just not what goes over the wire between nodes today.
  *
  * SINGLETON PATTERN for ObjectMapper:
  * ObjectMapper is expensive to create (loads class metadata, registers modules).
@@ -78,11 +18,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * One static instance shared across all calls is the correct pattern.
  * ObjectMapper is thread-safe for reading — safe to share.
  *
- * LENGTH-PREFIX PROTOCOL:
- * We send [4 bytes: message length][N bytes: JSON]
- * The receiver reads 4 bytes first to know how many bytes to read next.
- * Without this, the receiver doesn't know where one message ends and
- * the next begins — essential for streaming protocols.
+ * MESSAGE FRAMING:
+ * toJson()/fromJson() only handle object <-> JSON conversion — they know
+ * nothing about where one message ends and the next begins on the wire.
+ * Framing (deciding how much of the stream is "one message") is handled
+ * by the caller: every sender in this codebase writes JSON followed by a
+ * newline (see RaftNode.sendToPeer), and ZenithServer accumulates bytes
+ * per connection and splits on that newline before calling fromJson().
+ * A newline never appears inside the JSON itself because Jackson's
+ * default writeValueAsString() output is single-line.
  */
 public class MessageSerializer {
 
