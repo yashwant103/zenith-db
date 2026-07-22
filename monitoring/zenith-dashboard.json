@@ -1,0 +1,99 @@
+{
+  "title": "ZenithDB Cluster Dashboard",
+  "uid": "zenith-db",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Leader Status (1 = Leader, 0 = Follower)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "zenith_is_leader",
+        "legendFormat": "{{node}}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Current Raft Term",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "targets": [{
+        "expr": "zenith_raft_term",
+        "legendFormat": "{{node}}"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Active Trades in Memory",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "targets": [{
+        "expr": "zenith_active_trades",
+        "legendFormat": "{{node}}"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Trades Processed Per Second",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{
+        "expr": "rate(zenith_trades_total[1m])",
+        "legendFormat": "{{node}} trades/sec"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Leader Elections Over Time",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{
+        "expr": "increase(zenith_leader_elections_total[5m])",
+        "legendFormat": "{{node}} elections"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "WAL Flush Rate",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "rate(zenith_wal_flushes_total[1m])",
+        "legendFormat": "{{node}} flushes/sec"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Duplicates Blocked (Idempotency)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{
+        "expr": "rate(zenith_duplicates_blocked_total[1m])",
+        "legendFormat": "{{node}} duplicates blocked/sec"
+      }]
+    },
+    {
+      "id": 8,
+      "title": "Average Request Latency (ms)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [{
+        "expr": "zenith_request_latency_ms",
+        "legendFormat": "{{node}} avg latency ms"
+      }]
+    }
+  ]
+}

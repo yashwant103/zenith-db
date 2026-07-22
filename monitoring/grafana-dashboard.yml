@@ -1,0 +1,9 @@
+# prometheus/grafana-dashboard.yml
+# Tells Grafana to load dashboards from /var/lib/grafana/dashboards/
+apiVersion: 1
+providers:
+  - name: ZenithDB
+    folder: ZenithDB
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,36 @@
+# ═══════════════════════════════════════════════════════════
+# Prometheus Configuration — ZenithDB Cluster
+#
+# HOW PROMETHEUS WORKS:
+# Prometheus is a PULL-based metrics system.
+# Every 5 seconds, Prometheus sends an HTTP GET to /metrics
+# on each target. The target responds with all its metrics.
+# Prometheus stores them in a time-series database.
+# Grafana queries Prometheus to display dashboards.
+#
+# ZenithDB exposes /metrics on its per-node metrics port via built-in Java
+# HttpServer (ZenithMetrics.java) — no external library required.
+# Targets use Docker Compose SERVICE names (node-a/node-b/node-c), which is
+# what every other part of this stack uses (peer CLI args, healthchecks).
+# NOTE: container_name (zenith-node-a etc.) also happens to resolve on a
+# user-defined bridge network, but relying on that is an implementation
+# detail of Compose rather than the documented contract — service names are
+# guaranteed and are what the rest of this project already uses.
+# ═══════════════════════════════════════════════════════════
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'zenith-db'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'node-a:8001'
+          - 'node-b:8002'
+          - 'node-c:8003'
