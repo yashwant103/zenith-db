@@ -1,90 +1,43 @@
-//package com.zenith.raft.state;
-//
-//import com.zenith.raft.rpc.AppendEntriesRequest.LogEntryDTO;
-//
-//import java.util.ArrayList;
-//import java.util.List;
-//
-///**
-// * RaftLog — The staging area for distributed trades.
-// * Entries go here FIRST. They only move to the MemoryEngine once a majority is reached.
-// */
-//public class RaftLog {
-//
-//    // The actual list of commands. (Index 0 in list = Log Index 0)
-//    private final List<LogEntryDTO> entries = new ArrayList<>();
-//
-//    // Index of the highest log entry known to be committed (majority reached)
-//    private volatile int commitIndex = -1;
-//
-//    // Index of the highest log entry applied to our local MemoryEngine
-//    private volatile int lastApplied = -1;
-//
-//    public synchronized void appendEntry(LogEntryDTO entry) {
-//        entries.add(entry);
-//    }
-//
-//    // Used by Followers to safely overwrite conflicting logs if the Leader says so
-//    public synchronized void appendEntriesFrom(int prevLogIndex, List<LogEntryDTO> newEntries) {
-//        // Remove any conflicting entries that come after the prevLogIndex
-//        while (entries.size() > prevLogIndex + 1) {
-//            entries.remove(entries.size() - 1);
-//        }
-//        entries.addAll(newEntries);
-//    }
-//
-//    public synchronized LogEntryDTO getEntry(int index) {
-//        if (index < 0 || index >= entries.size()) return null;
-//        return entries.get(index);
-//    }
-//
-//    // ── Helper Methods for Raft RPCs ──
-//
-//    public synchronized int getLastLogIndex() {
-//        return entries.size() - 1;
-//    }
-//
-//    public synchronized int getLastLogTerm() {
-//        int lastIndex = getLastLogIndex();
-//        if (lastIndex == -1) return 0; // Log is empty
-//        return entries.get(lastIndex).getTerm();
-//    }
-//
-//    // Used by the Leader to grab all entries starting from a specific follower's nextIndex
-//    public synchronized List<LogEntryDTO> getEntriesFrom(int nextIndex) {
-//        if (nextIndex < 0 || nextIndex > entries.size()) {
-//            return new ArrayList<>();
-//        }
-//        return new ArrayList<>(entries.subList(nextIndex, entries.size()));
-//    }
-//
-//    // ── Commit Tracking ──
-//
-//    public int getCommitIndex() { return commitIndex; }
-//
-//    public void setCommitIndex(int commitIndex) {
-//        this.commitIndex = commitIndex;
-//    }
-//
-//    public int getLastApplied() { return lastApplied; }
-//
-//    public void setLastApplied(int lastApplied) {
-//        this.lastApplied = lastApplied;
-//    }
-//}
-
 package com.zenith.raft.state;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zenith.raft.rpc.AppendEntriesRequest.LogEntryDTO;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * RaftLog — The staging area for distributed trades.
  * UPGRADED: Now supports Log Compaction (Snapshots) using a baseIndex offset!
+ *
+ * PERSISTENCE:
+ * Previously this whole class was in-memory only. That's a real gap in a
+ * Raft implementation: the paper requires the log to be durable before a
+ * node responds to an AppendEntries or grants a vote, because the log
+ * (even its uncommitted tail) is what the "candidate's log is at least as
+ * up-to-date as mine" freshness check in RaftNode.handleVoteRequest relies
+ * on. Without this, a node that restarts looks artificially "empty" to
+ * that check and can end up voting for a candidate that's actually behind
+ * the cluster.
+ *
+ * DESIGN CHOICE — whole-state rewrite instead of an incremental log file:
+ * A "real" production Raft log would be its own append-only file with
+ * periodic compaction, mirroring WriteAheadLog. Given SNAPSHOT_THRESHOLD
+ * (RaftNode) is 5, this log never holds more than a handful of entries
+ * before it's compacted anyway — so on every structural change (append,
+ * replicate, compact) this simply re-serializes the whole small entries
+ * list to disk atomically (temp file + atomic rename, same pattern as
+ * RaftState). Simple, correct, and cheap at this scale. If SNAPSHOT_THRESHOLD
+ * were raised by orders of magnitude for a higher-throughput deployment,
+ * this would need to become a real incremental append-only format instead.
  */
 public class RaftLog {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // The actual list of commands.
     private final List<LogEntryDTO> entries = new ArrayList<>();
@@ -98,8 +51,71 @@ public class RaftLog {
     private volatile int commitIndex = -1;
     private volatile int lastApplied = -1;
 
+    // ── Persistence ──
+    private volatile Path persistPath = null;
+
+    /** Container for the on-disk representation. Public fields — Jackson
+     *  auto-detects public fields by default, no extra annotations needed. */
+    private static class PersistedLog {
+        public int baseIndex;
+        public int baseTerm;
+        public int commitIndex;
+        public int lastApplied;
+        public List<LogEntryDTO> entries = new ArrayList<>();
+    }
+
+    public synchronized void enablePersistence(Path path) throws IOException {
+        this.persistPath = path;
+        if (Files.exists(path)) {
+            PersistedLog loaded = MAPPER.readValue(path.toFile(), PersistedLog.class);
+            baseIndex   = loaded.baseIndex;
+            baseTerm    = loaded.baseTerm;
+            commitIndex = loaded.commitIndex;
+            lastApplied = loaded.lastApplied;
+            entries.clear();
+            entries.addAll(loaded.entries);
+            System.out.println("♻️ Restored persisted Raft log: " + loaded.entries.size() +
+                    " entries, baseIndex=" + loaded.baseIndex + ", lastApplied=" + loaded.lastApplied);
+        } else {
+            persistToDisk(); // create the file with initial empty state
+        }
+    }
+
+    // NOTE: everything in this class synchronizes on 'this' (the object
+    // monitor), same as every pre-existing method here — deliberately a
+    // single lock, not a second lock object, to avoid any risk of a
+    // lock-order-inversion deadlock between "mutate entries then persist"
+    // and "load persisted state into entries" call paths.
+    private synchronized void persistToDisk() {
+        Path path = persistPath;
+        if (path == null) return; // persistence not enabled — fine for tests that don't need it
+
+        PersistedLog snapshot = new PersistedLog();
+        snapshot.baseIndex   = baseIndex;
+        snapshot.baseTerm    = baseTerm;
+        snapshot.commitIndex = commitIndex;
+        snapshot.lastApplied = lastApplied;
+        snapshot.entries     = new ArrayList<>(entries);
+
+        try {
+            Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
+            MAPPER.writeValue(tmp.toFile(), snapshot);
+            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            System.err.println("⚠️ CRITICAL: failed to persist Raft log: " + e.getMessage());
+        }
+    }
+
+    /** Called by RaftNode once per apply-batch (not per entry) after a
+     *  synchronous WAL flush, so "log says applied" never gets ahead of
+     *  "trade data is actually durable on disk". */
+    public void persistLastApplied() {
+        persistToDisk();
+    }
+
     public synchronized void appendEntry(LogEntryDTO entry) {
         entries.add(entry);
+        persistToDisk();
     }
 
     public synchronized void appendEntriesFrom(int prevLogIndex, List<LogEntryDTO> newEntries) {
@@ -116,6 +132,7 @@ public class RaftLog {
             entries.remove(entries.size() - 1);
         }
         entries.addAll(newEntries);
+        persistToDisk();
     }
 
     public synchronized LogEntryDTO getEntry(int absoluteIndex) {
@@ -134,19 +151,22 @@ public class RaftLog {
         return getEntry(lastIndex).getTerm();
     }
 
+    // Used by the Leader to grab entries starting from a specific follower's nextIndex
     public synchronized List<LogEntryDTO> getEntriesFrom(int absoluteNextIndex) {
         int arrayIndex = absoluteNextIndex - baseIndex;
 
         if (arrayIndex < 0) {
-            // The follower is so far behind, the data it needs has already been compacted into a snapshot!
             System.out.println("⚠️ Follower is too far behind! Requires Snapshot transfer.");
             return new ArrayList<>();
         }
-
-        if (arrayIndex > entries.size()) {
+        if (arrayIndex >= entries.size()) {
             return new ArrayList<>();
         }
-        return new ArrayList<>(entries.subList(arrayIndex, entries.size()));
+
+        // FIX: Pagination / Batching!
+        // Never send more than 50 entries in a single network RPC to prevent OOM and JSON truncation.
+        int toIndex = Math.min(entries.size(), arrayIndex + 50);
+        return new ArrayList<>(entries.subList(arrayIndex, toIndex));
     }
 
     // ── NEW: THE COMPACTION TRIGGER ──
@@ -164,6 +184,8 @@ public class RaftLog {
 
             // Shift our offset forward
             baseIndex = upToAbsoluteIndex + 1;
+
+            persistToDisk();
 
             System.out.println("🧹 [RAFT LOG] Compacted! Deleted up to index " + upToAbsoluteIndex + ". New baseIndex is " + baseIndex);
         }
