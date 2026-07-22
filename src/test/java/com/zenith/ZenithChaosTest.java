@@ -40,29 +40,37 @@ public class ZenithChaosTest {
 
     @Test
     public void testLeadershipElectionAndRecovery() throws Exception {
+
         System.out.println("🧪 Starting Leadership Chaos Test...");
 
         List<String> peers = Arrays.asList("node1", "node2", "node3");
+
         Map<String, RaftNode> cluster = new HashMap<>();
 
         for (String id : peers) {
+
             List<String> otherPeers = new ArrayList<>(peers);
             otherPeers.remove(id);
 
-            // STAGGERED START: Give each node a 500ms head start to avoid split votes
             Thread.sleep(500);
 
             ZenithMetrics metrics = new ZenithMetrics(id);
 
-            // FIX: WriteAheadLog writes to tempDir so files are isolated per test
-            // Previously wrote "zenith_db.log" to project root → polluted project
             WriteAheadLog wal = makeWal(id);
 
-            RaftNode node = new RaftNode(id, otherPeers, new RaftState(), new MemoryEngine(), wal, metrics);
+            RaftNode node = new RaftNode(
+                    id,
+                    otherPeers,
+                    new RaftState(),
+                    new MemoryEngine(),
+                    wal,
+                    metrics
+            );
+
             cluster.put(id, node);
 
-            // Register in ClusterSimulator so sendToPeer routes in-memory
             ClusterSimulator.activeNodes.put(id, node);
+
             node.start();
         }
 
@@ -70,48 +78,73 @@ public class ZenithChaosTest {
         Thread.sleep(8000);
 
         RaftNode firstLeader = null;
-        String leaderId = "";
+        String leaderId = null;
+
         for (Map.Entry<String, RaftNode> entry : cluster.entrySet()) {
+
             if (entry.getValue().isLeader()) {
+
                 firstLeader = entry.getValue();
                 leaderId = entry.getKey();
                 break;
             }
         }
 
-        assertNotNull(firstLeader, "A leader should have been elected.");
-        System.out.println("👑 Initial Leader: " + leaderId);
+        assertNotNull(firstLeader, "Leader should exist.");
 
-        System.out.println("💀 KILLING THE LEADER: " + leaderId);
-        // Simulate crash by removing from mock network so peers can't reach it
+        System.out.println("\n👑 Initial Leader : " + leaderId);
+
+        //----------------------------------------------------
+        // Simulate a REAL crash
+        //----------------------------------------------------
+
+        System.out.println("\n💀 CRASHING LEADER : " + leaderId);
+
+        firstLeader.shutdown();
+
         ClusterSimulator.activeNodes.remove(leaderId);
 
-        System.out.println("⏳ Waiting for survivors to re-elect...");
-        Thread.sleep(10000);
+        //----------------------------------------------------
+
+        System.out.println("\n⏳ Waiting for re-election...\n");
+
+        Thread.sleep(12000);
 
         RaftNode secondLeader = null;
+        String secondLeaderId = null;
+
         for (Map.Entry<String, RaftNode> entry : cluster.entrySet()) {
-            if (entry.getValue().isLeader() && !entry.getKey().equals(leaderId)) {
+
+            if (!entry.getKey().equals(leaderId)
+                    && entry.getValue().isLeader()) {
+
                 secondLeader = entry.getValue();
-                System.out.println("👑 New Leader elected: " + entry.getKey());
+                secondLeaderId = entry.getKey();
                 break;
             }
         }
 
-        assertNotNull(secondLeader, "A new leader should have been elected after failure.");
+        assertNotNull(
+                secondLeader,
+                "A new leader should have been elected after the old leader crashed."
+        );
+
+        System.out.println("\n👑 New Leader : " + secondLeaderId);
+
+        System.out.println("\n✅ Chaos Test Passed!");
     }
 
-    // FIX: helper that creates a WAL with a unique file path per node inside tempDir
-    // and registers it for cleanup in @AfterEach
+    // Creates a WAL with a unique file path per node inside tempDir and
+    // registers it for cleanup in @AfterEach — see WriteAheadLog(Path) ctor.
+
     private WriteAheadLog makeWal(String nodeId) throws IOException {
+
         Path walPath = tempDir.resolve("zenith_" + nodeId + ".log");
-        // WriteAheadLog currently only supports the /data path
-        // For tests we need to support a custom path — use the default constructor
-        // which writes to /data. In CI/test environments create /data or use
-        // a subclass. For now we use the default and accept test files go to /data.
-        // TODO: Add WriteAheadLog(String path) constructor for full test isolation.
-        WriteAheadLog wal = new WriteAheadLog();
+
+        WriteAheadLog wal = new WriteAheadLog(walPath);
+
         openWals.add(wal);
+
         return wal;
     }
 }
