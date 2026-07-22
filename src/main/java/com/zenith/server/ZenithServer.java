@@ -2,11 +2,11 @@ package com.zenith.server;
 
 import com.zenith.metrics.ZenithMetrics;
 import com.zenith.raft.RaftNode;
-import com.zenith.raft.rpc.MessageSerializer;
 import com.zenith.raft.rpc.RaftMessage;
 import com.zenith.storage.MemoryEngine;
 import com.zenith.storage.Trade;
 import com.zenith.wal.WriteAheadLog;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -17,29 +17,6 @@ import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 
-/**
- * ZenithServer — NIO event loop + command orchestrator.
- *
- * FIXES FROM YOUR VERSION:
- *
- * BUG 1 — ByteBuffer.allocate(2048) too small for large AppendEntries JSON
- * A single AppendEntries with 10 log entries can easily exceed 2KB.
- * The buffer fills up, the JSON is truncated, MessageSerializer.fromJson()
- * throws an exception, and the Raft RPC is silently dropped.
- * Fix: increase to 65536 (64KB) — handles any realistic Raft message.
- *
- * BUG 2 — rawData = new String(buffer.array()).trim() reads null bytes
- * ByteBuffer.allocate() fills the buffer with 0x00 bytes. After reading N bytes,
- * the remaining (65536 - N) bytes are all null characters. new String(buffer.array())
- * includes all of them. trim() only removes leading/trailing whitespace — not null chars.
- * The JSON parser then fails on the embedded null bytes.
- * Fix: use new String(buffer.array(), 0, bytesRead) to read only actual bytes.
- *
- * BUG 3 — ZenithServer handles SELECT directly from MemoryEngine
- * SELECT bypasses Raft entirely — correct for reads in a CP system where
- * follower reads are acceptable. But the check `raftNode != null` is fragile.
- * Minor: raftNode is always non-null after construction — simplified check.
- */
 public class ZenithServer {
 
     private final MemoryEngine engine;
@@ -48,8 +25,7 @@ public class ZenithServer {
     private Selector selector;
     private final ZenithMetrics metrics;
 
-    // FIX BUG 1: 64KB buffer handles any realistic Raft JSON message
-    private static final int    BUFFER_SIZE = 65536;
+    private static final int BUFFER_SIZE = 262144;
 
     public ZenithServer(MemoryEngine engine, WriteAheadLog log, RaftNode raftNode, ZenithMetrics metrics) {
         this.engine   = engine;
@@ -62,11 +38,13 @@ public class ZenithServer {
         try {
             selector = Selector.open();
             ServerSocketChannel serverChannel = ServerSocketChannel.open();
-            serverChannel.bind(new InetSocketAddress(port));
+
+            // FIX: Explicitly bind to 0.0.0.0 so Docker exposes this to the host machine
+            serverChannel.bind(new InetSocketAddress("0.0.0.0", port));
             serverChannel.configureBlocking(false);
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-            System.out.println("🚀 ZenithDB NIO Server listening on port " + port + "...");
+            System.out.println("🚀 ZenithDB NIO Server listening on 0.0.0.0:" + port + "...");
 
             while (true) {
                 selector.select();
@@ -77,7 +55,7 @@ public class ZenithServer {
                     SelectionKey key = iter.next();
                     if      (key.isAcceptable()) handleAccept(serverChannel);
                     else if (key.isReadable())   handleRead(key);
-                    iter.remove(); // CRITICAL: must remove or event fires forever
+                    iter.remove();
                 }
             }
         } catch (IOException e) {
@@ -91,9 +69,61 @@ public class ZenithServer {
         client.register(selector, SelectionKey.OP_READ);
     }
 
+    /** Per-channel byte accumulator. Simple array-backed buffer supporting
+     *  append-to-end and consume-from-front — message sizes here are modest
+     *  (a handful of KB at most for a 50-entry AppendEntries batch), so a
+     *  straightforward copy-based implementation is the right tradeoff:
+     *  clear and correct over maximally performant. */
+    private static class ByteAccumulator {
+        private byte[] buf = new byte[0];
+
+        void append(byte[] data, int len) {
+            byte[] next = new byte[buf.length + len];
+            System.arraycopy(buf, 0, next, 0, buf.length);
+            System.arraycopy(data, 0, next, buf.length, len);
+            buf = next;
+        }
+
+        int size() { return buf.length; }
+        byte at(int i) { return buf[i]; }
+
+        /** Returns the first `len` bytes and removes them from the front. */
+        byte[] consume(int len) {
+            byte[] result = new byte[len];
+            System.arraycopy(buf, 0, result, 0, len);
+            byte[] remainder = new byte[buf.length - len];
+            System.arraycopy(buf, len, remainder, 0, remainder.length);
+            buf = remainder;
+            return result;
+        }
+
+        /** -1 if no newline (0x0A) found yet in the buffered bytes. */
+        int indexOfNewline() {
+            for (int i = 0; i < buf.length; i++) if (buf[i] == '\n') return i;
+            return -1;
+        }
+    }
+
     private void handleRead(SelectionKey key) {
         SocketChannel client = (SocketChannel) key.channel();
         ByteBuffer buffer    = ByteBuffer.allocate(BUFFER_SIZE);
+
+        // FIX: real message framing, now byte-level (not char-level) so it
+        // can carry genuinely binary data — see BinaryMessageCodec. Two
+        // message shapes are multiplexed on the same port:
+        //   1. Binary Raft peer-to-peer RPCs — framed as
+        //      [FRAME_MAGIC byte][4-byte length][binary payload]
+        //   2. Plain-text client commands (human via `nc`, or ZenithClient) —
+        //      newline-terminated, unchanged from before.
+        // The first byte of a message unambiguously tells us which: every
+        // legitimate text command starts with an uppercase ASCII letter
+        // (INSERT/SELECT/UPDATE/DELETE/...), and FRAME_MAGIC (0x02, an
+        // unprintable control byte) can never be the first byte of one.
+        ByteAccumulator pending = (ByteAccumulator) key.attachment();
+        if (pending == null) {
+            pending = new ByteAccumulator();
+            key.attach(pending);
+        }
 
         try {
             int bytesRead = client.read(buffer);
@@ -103,24 +133,50 @@ public class ZenithServer {
             }
             if (bytesRead == 0) return;
 
-            // FIX BUG 2: read exactly bytesRead bytes — not the entire null-padded buffer
-            String rawData = new String(buffer.array(), 0, bytesRead).trim();
-            if (rawData.isEmpty()) return;
+            pending.append(buffer.array(), bytesRead);
 
-            if (rawData.startsWith("{")) {
-                // Raft RPC from another node (JSON)
-                try {
-                    RaftMessage msg = MessageSerializer.fromJson(rawData);
-                    raftNode.receiveMessage(msg);
-                } catch (Exception e) {
-                    System.out.println("⚠️ Failed to parse Raft message: " + e.getMessage());
+            while (true) {
+                if (pending.size() == 0) break;
+
+                if (pending.at(0) == com.zenith.raft.rpc.BinaryMessageCodec.FRAME_MAGIC) {
+                    if (pending.size() < 5) break; // need magic byte + 4-byte length first
+                    int payloadLen =
+                            ((pending.at(1) & 0xFF) << 24) |
+                            ((pending.at(2) & 0xFF) << 16) |
+                            ((pending.at(3) & 0xFF) << 8)  |
+                            (pending.at(4) & 0xFF);
+                    if (pending.size() < 5 + payloadLen) break; // wait for the rest of the payload
+
+                    byte[] frame = pending.consume(5 + payloadLen);
+                    byte[] payload = new byte[payloadLen];
+                    System.arraycopy(frame, 5, payload, 0, payloadLen);
+                    try {
+                        RaftMessage msg = com.zenith.raft.rpc.BinaryMessageCodec.decode(payload);
+                        raftNode.receiveMessage(msg);
+                    } catch (Exception e) {
+                        System.out.println("⚠️ Failed to decode binary Raft message: " + e.getMessage());
+                    }
+
+                } else {
+                    int nl = pending.indexOfNewline();
+                    if (nl == -1) break; // incomplete text command, wait for more data
+                    byte[] lineBytes = pending.consume(nl + 1);
+                    String line = new String(lineBytes, 0, nl, java.nio.charset.StandardCharsets.UTF_8).trim();
+                    if (!line.isEmpty()) {
+                        handleTextCommand(client, line);
+                    }
                 }
-            } else {
-                // Plain-text client command
-                String response = processCommand(rawData);
-                client.write(ByteBuffer.wrap((response + "\n").getBytes()));
             }
 
+        } catch (IOException e) {
+            try { client.close(); } catch (IOException ignored) {}
+        }
+    }
+
+    private void handleTextCommand(SocketChannel client, String rawData) {
+        try {
+            String response = processCommand(rawData);
+            client.write(ByteBuffer.wrap((response + "\n").getBytes()));
         } catch (IOException e) {
             try { client.close(); } catch (IOException ignored) {}
         }
@@ -131,8 +187,20 @@ public class ZenithServer {
 
         try {
             switch (parts[0]) {
-
                 case "SELECT" -> {
+                    // FIX: previously any node — including a follower that may be
+                    // lagging behind on replication — answered reads directly from
+                    // its own local state. That was fixed by redirecting to the
+                    // leader, then upgraded further: "I am currently the leader" on
+                    // its own isn't a linearizability guarantee (a just-partitioned
+                    // leader doesn't know it yet), so this now uses a leader-lease
+                    // check — see RaftNode.isSafeForLinearizableRead() for the full
+                    // reasoning and its stated tradeoffs vs. a full ReadIndex round-trip.
+                    if (!raftNode.isSafeForLinearizableRead()) {
+                        return "ERROR: Cannot guarantee a linearizable read right now " +
+                                "(not leader, or leadership not recently confirmed by a majority). " +
+                                "Retry shortly or query the LEADER directly.";
+                    }
                     Trade t = engine.getTrade(parts[1]);
                     if (t != null) {
                         return "FOUND: " + t.tradeId() + " | " + t.tickerSymbol() +
@@ -140,8 +208,12 @@ public class ZenithServer {
                     }
                     return "NOT_FOUND: Trade " + parts[1] + " does not exist.";
                 }
-
                 case "SELECT_TICKER" -> {
+                    if (!raftNode.isSafeForLinearizableRead()) {
+                        return "ERROR: Cannot guarantee a linearizable read right now " +
+                                "(not leader, or leadership not recently confirmed by a majority). " +
+                                "Retry shortly or query the LEADER directly.";
+                    }
                     java.util.List<Trade> trades = engine.getTradesByTicker(parts[1]);
                     if (trades.isEmpty()) return "NOT_FOUND: No trades for ticker " + parts[1];
                     StringBuilder sb = new StringBuilder("FOUND " + trades.size() + " TRADES: ");
@@ -152,28 +224,21 @@ public class ZenithServer {
                     }
                     return sb.toString();
                 }
-
                 case "INSERT", "UPDATE", "DELETE" -> {
-                    // Idempotency check at gateway
                     String requestId = parts.length > 6 ? parts[6] : null;
                     if (requestId != null && engine.hasProcessed(requestId)) {
                         return "ALREADY_PROCESSED: " + requestId + " safely executed previously.";
                     }
-
-                    // FIX BUG 3: simplified null check
                     if (!raftNode.isLeader()) {
                         return "ERROR: I am a FOLLOWER. Send trades to the active LEADER.";
                     }
-
                     raftNode.submitClientCommand(parts[0], parts[1], rawCommand);
                     return "PENDING: Trade submitted to Raft Consensus Cluster.";
                 }
-
                 case "COMPACT" -> {
                     log.compact(engine);
                     return "SUCCESS: Database compacted and optimized.";
                 }
-
                 default -> { return "ERROR: Unknown command: " + parts[0]; }
             }
         } catch (Exception e) {
