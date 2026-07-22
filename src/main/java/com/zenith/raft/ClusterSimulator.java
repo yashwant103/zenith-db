@@ -20,7 +20,24 @@ public class ClusterSimulator {
     public static final Map<String, RaftNode> activeNodes = new ConcurrentHashMap<>();
 
     // This acts like our TCP socket layer for testing
+    //
+    // FIX: a real network partition is bidirectional — a node cut off from
+    // the cluster can neither receive NOR send. This only checked whether
+    // the RECIPIENT was currently active, not the SENDER. That meant a test
+    // isolating a node by removing it from activeNodes correctly blocked
+    // messages arriving *at* that node, but the isolated node's own
+    // outbound messages to still-active peers were delivered normally —
+    // an asymmetric partition, not a real one. Concretely: if the isolated
+    // node had been the leader, it kept successfully delivering heartbeats
+    // to the "remaining" majority, so those followers never saw a missing
+    // heartbeat and never started a new election — a real automated test
+    // run caught exactly this (majorityPartitionStillElectsLeader hung for
+    // the full wait window because the followers correctly, but
+    // misleadingly, still thought they had a healthy leader).
     public static void routeMessage(String targetNodeId, RaftMessage message) {
+        if (!activeNodes.containsKey(message.getSenderId())) {
+            return; // sender is currently "partitioned away" — drop silently, like a real dropped packet
+        }
         RaftNode target = activeNodes.get(targetNodeId);
         if (target != null) {
             // Simulate a tiny 10ms network delay, then drop it in their inbox
