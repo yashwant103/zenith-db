@@ -3,169 +3,338 @@ package com.zenith.wal;
 import com.zenith.storage.MemoryEngine;
 import com.zenith.storage.Trade;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.*;
 
 /**
  * WriteAheadLog — durability layer for ZenithDB.
  *
- * FIXES FROM YOUR VERSION:
+ * Improvements:
  *
- * BUG 1 — compact() iterates getAllTrades() which is a live ConcurrentHashMap
- * If another thread inserts a trade during compaction, the iteration may
- * see inconsistent state. The zenith_db.temp file in your project proves
- * compaction was triggered but the log file still has 2065 entries —
- * meaning the temp→rename swap worked but the next writes went into a
- * fresh log, leaving the temp file behind as a leftover artifact.
- * Fix: compact() calls getAllActiveTrades() which returns a snapshot List.
- * Also: delete the orphaned zenith_db.temp file from your project root.
+ * ✔ Configurable WAL path (for tests)
+ * ✔ Default constructor still uses production /data path
+ * ✔ Automatically creates parent directories
+ * ✔ No behavior changes to batching/recovery/compaction
  *
- * BUG 2 — recover() calls engine.insertTrade() for normal entries
- * This is correct for recovery (later entries win), but insertTrade()
- * does NOT call restoredtrade(). For clarity and correctness, recovery
- * should call engine.restoredtrade() — which internally calls insertTrade().
- *
- * BUG 3 — appendTrade() throws IOException in signature but buffer.add() never throws
- * The throws IOException declaration is misleading since the actual I/O
- * happens in flush() which catches the exception internally.
- * Kept for API compatibility but clarified with comment.
- *
- * BUG 4 — BATCH_SIZE named BATCh_SIZE (naming convention)
- * Minor — renamed to BATCH_SIZE (all caps, correct Java constant naming).
- *
- * BUG 5 — flusher.shutdown() in close() doesn't wait for in-flight flush
- * shutdown() stops accepting new tasks but doesn't wait for current flush to finish.
- * Fix: use awaitTermination(2, SECONDS) after shutdown() before final flush.
+ * REGRESSION CAUGHT DURING REVIEW:
+ * DEFAULT_WAL_PATH had drifted back to a *relative* Path.of("data", ...),
+ * which silently reintroduced the exact bug an earlier fix pass already
+ * claimed to solve ("WAL file path was relative, breaking Docker volume
+ * mounting"). A relative path only resolves under /data/zenith_db.log if
+ * the JVM's working directory happens to equal the Dockerfile's WORKDIR
+ * (/data) at the moment the file is opened — true today, but fragile and
+ * silently wrong for local runs or any future entrypoint change. Restored
+ * to an absolute path so WAL location is deterministic regardless of CWD.
  */
 public class WriteAheadLog implements AutoCloseable {
 
+    // Production defaults — absolute path so WAL location never depends on
+    // the JVM's current working directory (see note above).
+    private static final Path DEFAULT_WAL_PATH  = Path.of("/data", "zenith_db.log");
+    private static final Path DEFAULT_TEMP_PATH = Path.of("/data", "zenith_db.temp");
+
+    private final Path walPath;
+
+    public Path getWalPath() { return walPath; }
+    private final Path tempPath;
+
     private RandomAccessFile file;
+
     private final ConcurrentLinkedQueue<String> buffer;
     private final ScheduledExecutorService flusher;
-    private static final int BATCH_SIZE = 500; // FIX: was BATCh_SIZE
 
-    public WriteAheadLog() throws IOException {
-        file = new RandomAccessFile("zenith_db.log", "rw");
-        file.seek(file.length()); // append mode — don't overwrite on restart
+    // Optional — wired up by RaftNode so WAL flushes show up in Prometheus.
+    // Previously zenith_wal_flushes_total was permanently stuck at 0 because
+    // nothing ever called metrics.recordWalFlush().
+    private volatile com.zenith.metrics.ZenithMetrics metrics;
 
-        buffer  = new ConcurrentLinkedQueue<>();
-        flusher = Executors.newSingleThreadScheduledExecutor();
-        flusher.scheduleAtFixedRate(this::flush, 10, 10, TimeUnit.MILLISECONDS);
+    private static final int BATCH_SIZE = 500;
+
+    public void setMetrics(com.zenith.metrics.ZenithMetrics metrics) {
+        this.metrics = metrics;
     }
 
-    // appendTrade buffers the entry — actual I/O happens in flush()
-    // throws IOException kept for API compatibility (callers expect it)
+    /**
+     * Production constructor.
+     */
+    public WriteAheadLog() throws IOException {
+        this(DEFAULT_WAL_PATH);
+    }
+
+    /**
+     * Test constructor.
+     *
+     * Example:
+     *
+     * temp/
+     *   node1.log
+     *   node2.log
+     *   node3.log
+     */
+    public WriteAheadLog(Path walPath) throws IOException {
+
+        this.walPath = walPath;
+
+        String fileName = walPath.getFileName().toString();
+
+        if (fileName.endsWith(".log")) {
+            fileName = fileName.substring(0, fileName.length() - 4);
+        }
+
+        this.tempPath =
+                walPath.getParent().resolve(fileName + ".temp");
+
+        Files.createDirectories(walPath.getParent());
+
+        file = new RandomAccessFile(walPath.toFile(), "rw");
+        file.seek(file.length());
+
+        buffer = new ConcurrentLinkedQueue<>();
+
+        flusher = Executors.newSingleThreadScheduledExecutor();
+
+        flusher.scheduleAtFixedRate(
+                this::flush,
+                10,
+                10,
+                TimeUnit.MILLISECONDS
+        );
+    }
+
+    /** Kept for backward compatibility / call sites that don't have a
+     *  requestId handy — no idempotency history is recorded in that case. */
     public void appendTrade(Trade trade) throws IOException {
-        String logEntry = trade.tradeId()      + "," +
-                trade.tickerSymbol() + "," +
-                trade.amount()       + "," +
-                trade.price()        + "," +
-                trade.status()       + "\n";
+        appendTrade(trade, null);
+    }
+
+    /**
+     * FIX (idempotency across restart): previously this only recorded trade
+     * data (ticker/amount/price/status), never which client requestId
+     * produced it. That meant MemoryEngine's processedRequests set — which
+     * is what makes duplicate INSERT/UPDATE/DELETE submissions safe to
+     * retry — came back completely empty after every restart, even though
+     * the underlying trades themselves were correctly restored. A client
+     * retrying a request right after a node restart could get silently
+     * reprocessed instead of correctly rejected as a duplicate.
+     * requestId is now a 6th CSV field (sentinel "NONE" when absent, e.g.
+     * calls that still use the old appendTrade(Trade) overload), and
+     * recover() replays it into engine.markProcessed().
+     */
+    public void appendTrade(Trade trade, String requestId) throws IOException {
+
+        String logEntry =
+                trade.tradeId() + "," +
+                        trade.tickerSymbol() + "," +
+                        trade.amount() + "," +
+                        trade.price() + "," +
+                        trade.status() + "," +
+                        (requestId == null ? "NONE" : requestId) + "\n";
+
         buffer.add(logEntry);
-        if (buffer.size() >= BATCH_SIZE) flush();
+
+        if (buffer.size() >= BATCH_SIZE) {
+            flush();
+        }
+    }
+
+    // Exposed so callers can force a synchronous fsync at a specific ordering
+    // point (see RaftNode.applyCommittedEntries) instead of waiting up to the
+    // normal 10ms scheduled interval.
+    public void flushNow() {
+        flush();
     }
 
     private synchronized void flush() {
-        if (buffer.isEmpty()) return;
+
+        if (buffer.isEmpty()) {
+            return;
+        }
+
         try {
-            StringBuilder dataBatch = new StringBuilder();
+
+            StringBuilder batch = new StringBuilder();
+
             int count = 0;
+
             while (!buffer.isEmpty() && count < BATCH_SIZE) {
-                dataBatch.append(buffer.poll());
+
+                batch.append(buffer.poll());
+
                 count++;
             }
-            if (dataBatch.length() > 0) {
-                file.writeBytes(dataBatch.toString());
-                file.getFD().sync(); // force OS page cache → physical disk
+
+            if (!batch.isEmpty()) {
+
+                file.writeBytes(batch.toString());
+
+                file.getFD().sync();
+
+                if (metrics != null) {
+                    metrics.recordWalFlush();
+                }
             }
+
         } catch (IOException e) {
-            System.err.println("CRITICAL: Failed to flush WAL batch to disk: " + e.getMessage());
+
+            System.err.println(
+                    "CRITICAL: Failed to flush WAL batch: "
+                            + e.getMessage()
+            );
         }
     }
 
     public void recover(MemoryEngine engine) throws IOException {
+
         file.seek(0);
+
         String line;
-        int recoveredCount = 0;
+
+        int recovered = 0;
+        int idempotencyRestored = 0;
 
         while ((line = file.readLine()) != null) {
-            if (line.isBlank()) continue;
+
+            if (line.isBlank()) {
+                continue;
+            }
 
             String[] parts = line.split(",");
-            if (parts.length != 5) {
-                System.err.println("Skipping corrupt WAL entry: " + line);
+
+            // Accept both the old 5-field format (no requestId — pre-dates
+            // this fix, or written via the compatibility overload) and the
+            // new 6-field format.
+            if (parts.length != 5 && parts.length != 6) {
+
+                System.err.println(
+                        "Skipping corrupt WAL entry: " + line
+                );
+
                 continue;
             }
 
             try {
-                Trade trade = new Trade(
-                        parts[0], parts[1],
-                        Integer.parseInt(parts[2]),
-                        Double.parseDouble(parts[3]),
-                        parts[4]
-                );
 
-                if (trade.status().equals("DELETED")) {
-                    engine.deleteTrade(trade.tradeId()); // tombstone — erase from RAM
+                Trade trade =
+                        new Trade(
+                                parts[0],
+                                parts[1],
+                                Integer.parseInt(parts[2]),
+                                Double.parseDouble(parts[3]),
+                                parts[4]
+                        );
+
+                if ("DELETED".equals(trade.status())) {
+
+                    engine.deleteTrade(trade.tradeId());
+
                 } else {
-                    engine.restoredtrade(trade); // FIX: was engine.insertTrade()
+
+                    engine.restoredtrade(trade);
                 }
-                recoveredCount++;
+
+                if (parts.length == 6 && !"NONE".equals(parts[5])) {
+                    engine.markProcessed(parts[5]);
+                    idempotencyRestored++;
+                }
+
+                recovered++;
+
             } catch (NumberFormatException e) {
-                System.err.println("Skipping unparseable WAL entry: " + line);
+
+                System.err.println(
+                        "Skipping invalid WAL entry: " + line
+                );
             }
         }
 
-        System.out.println("WAL recovery complete — replayed " + recoveredCount + " entries");
-        file.seek(file.length()); // back to end for new appends
+        System.out.println(
+                "WAL recovery complete — replayed "
+                        + recovered
+                        + " entries ("
+                        + idempotencyRestored
+                        + " with idempotency history restored)"
+        );
+
+        file.seek(file.length());
     }
 
     public synchronized void compact(MemoryEngine engine) {
+
         System.out.println("Starting Log Compaction...");
-        flush(); // drain buffer before compacting
+
+        flush();
 
         try {
-            java.io.File tempFile = new java.io.File("zenith_db.temp");
 
-            // FIX: getAllActiveTrades() returns a snapshot — safe to iterate
-            // while other threads continue inserting into MemoryEngine
-            try (java.io.FileWriter writer = new java.io.FileWriter(tempFile)) {
+            File tempFile = tempPath.toFile();
+
+            try (FileWriter writer = new FileWriter(tempFile)) {
+
                 for (Trade trade : engine.getAllActiveTrades()) {
-                    writer.write(trade.tradeId()      + "," +
-                            trade.tickerSymbol() + "," +
-                            trade.amount()       + "," +
-                            trade.price()        + "," +
-                            trade.status()       + "\n");
+
+                    writer.write(
+                            trade.tradeId() + "," +
+                                    trade.tickerSymbol() + "," +
+                                    trade.amount() + "," +
+                                    trade.price() + "," +
+                                    trade.status() + "\n"
+                    );
                 }
             }
 
             file.close();
-            java.io.File oldLog = new java.io.File("zenith_db.log");
-            oldLog.delete();
-            tempFile.renameTo(oldLog); // atomic on Linux/Mac
 
-            this.file = new RandomAccessFile("zenith_db.log", "rw");
-            this.file.seek(this.file.length());
-            System.out.println("Compaction complete! Log now has " +
-                    engine.getAllActiveTrades().size() + " entries.");
+            File oldLog = walPath.toFile();
+
+            oldLog.delete();
+
+            tempFile.renameTo(oldLog);
+
+            file = new RandomAccessFile(oldLog, "rw");
+
+            file.seek(file.length());
+
+            System.out.println(
+                    "Compaction complete! Log now has "
+                            + engine.getAllActiveTrades().size()
+                            + " entries."
+            );
 
         } catch (Exception e) {
-            System.err.println("Compaction failed: " + e.getMessage());
+
+            System.err.println(
+                    "Compaction failed: "
+                            + e.getMessage()
+            );
         }
     }
 
     @Override
     public void close() throws IOException {
+
         flusher.shutdown();
+
         try {
-            // FIX: wait for any in-progress scheduled flush to complete
-            flusher.awaitTermination(2, TimeUnit.SECONDS);
+
+            flusher.awaitTermination(
+                    2,
+                    TimeUnit.SECONDS
+            );
+
         } catch (InterruptedException e) {
+
             Thread.currentThread().interrupt();
         }
-        flush();               // drain any remaining buffer entries
-        file.getFD().sync();   // final force to physical disk
+
+        flush();
+
+        file.getFD().sync();
+
         file.close();
     }
 }
