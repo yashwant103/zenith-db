@@ -37,3 +37,7 @@ build/
 
 ### Mac OS ###
 .DS_Store
+# Runtime data — should never be committed
+*.log
+simulator-data/
+data/
