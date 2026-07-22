@@ -27,6 +27,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * request IDs consuming unbounded memory.
  * Fix: use a LinkedHashMap with max size 100_000 as a simple LRU cache.
  *
+ * REGRESSION CAUGHT DURING REVIEW:
+ * The previous "fix" overrode removeEldestEntry() on an anonymous
+ * LinkedHashSet subclass. That method does not exist on LinkedHashSet —
+ * only LinkedHashMap declares it. LinkedHashSet is backed internally by
+ * its own private LinkedHashMap, which this subclass never touches, so
+ * the override was just a brand-new unused method that Java compiled
+ * without complaint and the JVM never called. Net effect: eviction never
+ * happened and the idempotency set still grew without bound.
+ * Real fix: back the set with an actual LinkedHashMap (which does
+ * support removeEldestEntry) via Collections.newSetFromMap().
+ *
  * BUG 4 — getAllActiveTrades() missing (needed by WAL compact)
  * Your compact() uses getAllTrades().values() — but getAllTrades() returns
  * the raw ConcurrentHashMap which is modified during iteration in compact().
@@ -41,13 +52,19 @@ public class MemoryEngine {
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Trade>> tickerIndex = new ConcurrentHashMap<>();
 
     // IDEMPOTENCY CACHE — fixed max size to prevent memory leak
-    // Uses synchronized LinkedHashMap with LRU eviction at 100k entries
+    // LinkedHashMap actually supports removeEldestEntry (unlike LinkedHashSet),
+    // so this is the version that really evicts at 100k entries.
+    private static final int MAX_PROCESSED_REQUESTS = 100_000;
+
     private final java.util.Set<String> processedRequests = java.util.Collections.synchronizedSet(
-            new java.util.LinkedHashSet<String>() {
-                protected boolean removeEldestEntry(Map.Entry<String, ?> eldest) {
-                    return size() > 100_000; // evict oldest when over limit
-                }
-            }
+            java.util.Collections.newSetFromMap(
+                    new java.util.LinkedHashMap<String, Boolean>(16, 0.75f, false) {
+                        @Override
+                        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                            return size() > MAX_PROCESSED_REQUESTS; // evict oldest when over limit
+                        }
+                    }
+            )
     );
 
     // ── Idempotency ──
