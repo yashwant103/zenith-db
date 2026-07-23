@@ -311,25 +311,29 @@ public class SplitBrainPartitionTest {
 
     @RepeatedTest(20)
     void randomPartitionSequenceNeverViolatesLeaderSafety() throws Exception {
-        Map<String, RaftNode> cluster = buildCluster(5);
+        // 3 nodes - matches the actual production cluster size (see
+        // docker-compose.yml) rather than an arbitrarily larger test-only
+        // cluster, so there's no ambiguity about what this project's
+        // architecture actually is.
+        Map<String, RaftNode> cluster = buildCluster(3);
         Thread.sleep(7000);
 
         List<String> ids = new ArrayList<>(cluster.keySet());
         Collections.shuffle(ids);
-        Random rnd = new Random();
 
-        // Randomly isolate a MINORITY (1 or 2 of 5) so the cluster can still
-        // make progress — the invariant under test is leader safety, not
-        // liveness under a majority-partition (that's a separate, expected
-        // outcome already covered by isolatedMinorityNodeNeverBecomesLeader).
-        int isolateCount = 1 + rnd.nextInt(2); // 1 or 2
-        List<String> isolated = ids.subList(0, isolateCount);
-        for (String id : isolated) isolate(id);
+        // With 3 nodes, isolating exactly 1 is the only way to keep a
+        // majority able to make progress (isolating 2 would leave a
+        // minority of 1, which is the separate liveness-loss case already
+        // covered by isolatedMinorityNodeNeverBecomesLeader, not this
+        // test's invariant). The randomization here is *which* node gets
+        // isolated, shuffled per run.
+        String isolated = ids.get(0);
+        isolate(isolated);
 
         Thread.sleep(6000);
         assertAtMostOneLeaderPerTerm(cluster.values());
 
-        for (String id : isolated) heal(id, cluster.get(id));
+        heal(isolated, cluster.get(isolated));
         Thread.sleep(2000);
         assertAtMostOneLeaderPerTerm(cluster.values());
     }
