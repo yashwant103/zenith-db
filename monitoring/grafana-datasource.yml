@@ -1,0 +1,10 @@
+# prometheus/grafana-datasource.yml
+# Tells Grafana where to find Prometheus — auto-configured on startup
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

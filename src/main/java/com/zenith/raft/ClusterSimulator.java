@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import com.zenith.metrics.ZenithMetrics;
+
 /**
  * Boots up a 3-Node Raft Cluster in memory to test Leader Election and Heartbeats.
  */
@@ -34,11 +35,17 @@ public class ClusterSimulator {
         System.out.println("🌐 Booting up ZenithDB Raft Cluster Simulator...\n");
 
         // Define our 3 nodes
+        // NOTE: peer IDs must match the keys in activeNodes (see puts below)
+        // sendToPeer checks ClusterSimulator.activeNodes.containsKey(peerId) first
+        // so these must be "Node-A", "Node-B", "Node-C" — NOT "node-a:9001"
         List<String> peersA = Arrays.asList("Node-B", "Node-C");
         List<String> peersB = Arrays.asList("Node-A", "Node-C");
         List<String> peersC = Arrays.asList("Node-A", "Node-B");
 
-        // Create mock database engines and WALs for the simulator
+        // FIX: reuse the engines and WALs — don't create 6 instances
+        // Old code created walA/walB/walC then passed NEW WriteAheadLog() to RaftNode
+        // = 6 WAL instances all writing to zenith_db.log simultaneously → file corruption
+        // = 3 leaked ScheduledExecutorService threads running forever
         MemoryEngine engineA = new MemoryEngine();
         MemoryEngine engineB = new MemoryEngine();
         MemoryEngine engineC = new MemoryEngine();
@@ -47,10 +54,9 @@ public class ClusterSimulator {
         WriteAheadLog walB = new WriteAheadLog();
         WriteAheadLog walC = new WriteAheadLog();
 
-        // Pass all 5 arguments!
-        RaftNode nodeA = new RaftNode("Node-A", peersA, new RaftState(), new MemoryEngine(), new WriteAheadLog(), new ZenithMetrics("Node-A"));
-        RaftNode nodeB = new RaftNode("Node-B", peersB, new RaftState(), new MemoryEngine(), new WriteAheadLog(), new ZenithMetrics("Node-B"));
-        RaftNode nodeC = new RaftNode("Node-C", peersC, new RaftState(), new MemoryEngine(), new WriteAheadLog(), new ZenithMetrics("Node-C"));
+        RaftNode nodeA = new RaftNode("Node-A", peersA, new RaftState(), engineA, walA, new ZenithMetrics("Node-A"));
+        RaftNode nodeB = new RaftNode("Node-B", peersB, new RaftState(), engineB, walB, new ZenithMetrics("Node-B"));
+        RaftNode nodeC = new RaftNode("Node-C", peersC, new RaftState(), engineC, walC, new ZenithMetrics("Node-C"));
 
         // Plug them into the mock network
         activeNodes.put("Node-A", nodeA);
@@ -63,7 +69,7 @@ public class ClusterSimulator {
         nodeC.start();
 
         // ── THE LOG REPLICATION TEST ──
-        // 1. Wait 2 seconds for the cluster to elect a Leader and stabilize
+        // 1. Wait 5 seconds for the cluster to elect a Leader and stabilize
         Thread.sleep(5000);
 
         System.out.println("\n🛒 [CLIENT] Finding the Leader to submit a trade...");
@@ -77,8 +83,6 @@ public class ClusterSimulator {
 
         if (actualLeader != null) {
             System.out.println("🛒 [CLIENT] Found Leader! Sending trade: INSERT AAPL 150");
-
-            // 2. The client submits the trade to the Leader
             actualLeader.submitClientCommand("INSERT", "AAPL", "150");
         } else {
             System.out.println("❌ No leader was elected in time!");
@@ -86,6 +90,11 @@ public class ClusterSimulator {
 
         // 3. Wait 1 second to let the network broadcast the trades to the followers
         Thread.sleep(1000);
+
+        // FIX: close WALs cleanly so flusher threads don't leak after System.exit()
+        walA.close();
+        walB.close();
+        walC.close();
 
         System.exit(0);
     }

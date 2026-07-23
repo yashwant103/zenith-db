@@ -1,0 +1,32 @@
+# ═══════════════════════════════════════════════════════════
+# Prometheus Configuration — ZenithDB Cluster
+#
+# HOW PROMETHEUS WORKS:
+# Prometheus is a PULL-based metrics system.
+# Every 5 seconds, Prometheus sends an HTTP GET to /metrics
+# on each target. The target responds with all its metrics.
+# Prometheus stores them in a time-series database.
+# Grafana queries Prometheus to display dashboards.
+#
+# ZenithDB exposes /metrics on port 8080 via built-in Java HttpServer
+# (ZenithMetrics.java) — no external library required.
+# Targets use Docker service names (zenith-node-a etc) which resolve
+# via Docker's internal DNS on the zenith-net bridge network.
+# ═══════════════════════════════════════════════════════════
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'zenith-db'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'zenith-node-a:8001'
+          - 'zenith-node-b:8002'
+          - 'zenith-node-c:8003'

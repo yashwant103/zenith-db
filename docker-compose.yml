@@ -19,47 +19,71 @@ services:
     container_name: zenith-node-a
     ports:
       - "9001:9001"   # Raft + client commands
-      - "8081:8080"   # Metrics (host:8081 → container:8080)
-    command: ["Node-A", "9001", "node-b:9002", "node-c:9003"]
-    # FIX: WAL persists across restarts — without this zenith_db.log is lost on restart
+      - "8081:8001"   # Metrics (host:8081 → container:8080)
+    command: ["node-a", "9001", "node-b:9002", "node-c:9003"]
     volumes:
       - node-a-data:/data
     networks:
       - zenith-net
     restart: unless-stopped
+    # FIX 1: healthcheck must live on node-a (not node-b)
+    # node-b says depends_on node-a with condition: service_healthy
+    # If node-a has no healthcheck, Docker can never mark it healthy → node-b hangs forever
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9001"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   node-b:
     build: .
     container_name: zenith-node-b
     ports:
       - "9002:9002"
-      - "8082:8080"
-    command: ["Node-B", "9002", "node-a:9001", "node-c:9003"]
+      - "8082:8002"
+    command: ["node-b", "9002", "node-a:9001", "node-c:9003"]
     volumes:
       - node-b-data:/data
     networks:
       - zenith-net
     restart: unless-stopped
+    # FIX 2: removed misplaced healthcheck from here (it was on the wrong service)
+    # FIX 3: correct depends_on syntax — waits for node-a to pass healthcheck before starting
     depends_on:
-      - node-a
+      node-a:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9002"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   node-c:
     build: .
     container_name: zenith-node-c
     ports:
       - "9003:9003"
-      - "8083:8080"
-    command: ["Node-C", "9003", "node-a:9001", "node-b:9002"]
+      - "8083:8003"
+    command: ["node-c", "9003", "node-a:9001", "node-b:9002"]
     volumes:
       - node-c-data:/data
     networks:
       - zenith-net
     restart: unless-stopped
+    # FIX 4: upgraded node-c depends_on to also use service_healthy (was bare list before)
     depends_on:
-      - node-b
+      node-b:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9003"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   prometheus:
-    # FIX: pinned version — 'latest' can break on next pull
     image: prom/prometheus:v2.47.0
     container_name: prometheus
     ports:
@@ -72,7 +96,6 @@ services:
     restart: unless-stopped
 
   grafana:
-    # FIX: pinned version
     image: grafana/grafana:10.1.0
     container_name: grafana
     ports:

@@ -474,6 +474,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.*;
+import java.util.Set;
 
 public class RaftNode {
 
@@ -494,9 +495,12 @@ public class RaftNode {
     private ScheduledFuture<?> heartbeatTimer;
     private final Random random = new Random();
 
-    private int votesReceived = 0;
+    // Each server's vote should only be counted once per election.
+    private final Set<String> grantedVotes = ConcurrentHashMap.newKeySet();
     private final Map<String, Integer> nextIndex  = new ConcurrentHashMap<>();
     private final Map<String, Integer> matchIndex = new ConcurrentHashMap<>();
+
+    private volatile boolean running = true;
 
     public RaftNode(String nodeId, List<String> peers, RaftState state,
                     MemoryEngine engine, WriteAheadLog wal, ZenithMetrics metrics) {
@@ -516,7 +520,7 @@ public class RaftNode {
 
         Thread coreThread = new Thread(() -> {
             try {
-                while (true) {
+                while (running) {
                     RaftMessage message = inbox.take();
                     processMessage(message);
                 }
@@ -542,11 +546,23 @@ public class RaftNode {
         else System.out.println("⚠️ Unknown message: " + message.getClass().getSimpleName());
     }
 
-    private void resetElectionTimer() {
-        if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);
-        int timeoutMs = 1500 + random.nextInt(1500);
-        electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);
-    }
+//    private void resetElectionTimer() {
+//        if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);
+//        int timeoutMs = 1500 + random.nextInt(1500);
+//        electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);
+//    }
+private void resetElectionTimer() {
+    if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);
+    // FIX: Increased timeout from 1500-3000ms to 4000-6000ms for Windows Docker
+    // Windows Docker Desktop adds 200-400ms container-to-container latency per hop.
+    // At 1500ms timeout + 500ms heartbeat interval, heartbeats were arriving just
+    // barely in time — any GC pause or network blip caused a false election.
+    // 4000-6000ms gives 8-12x heartbeat intervals of buffer before triggering election.
+    // Raft paper recommends: electionTimeout = 10x heartbeatInterval minimum.
+    // Our heartbeat = 500ms, so minimum election timeout = 5000ms.
+    int timeoutMs = 4000 + random.nextInt(2000);
+    electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);
+}
 
     private void startElection() { inbox.offer(new TriggerElectionCommand()); }
 
@@ -558,7 +574,12 @@ public class RaftNode {
         metrics.setRaftTerm(state.getCurrentTerm());
         metrics.setLeader(false);
 
-        votesReceived = 1;
+//        votesReceived = 1;
+//        state.setVotedFor(nodeId);
+
+        grantedVotes.clear();
+// Candidate always votes for itself.
+        grantedVotes.add(nodeId);
         state.setVotedFor(nodeId);
 
         for (String peerId : peers) {
@@ -600,28 +621,49 @@ public class RaftNode {
             return;
         }
         if (resp.isVoteGranted()) {
-            votesReceived++;
-            System.out.println("✅ Node [" + nodeId + "] received vote from " +
-                    resp.getSenderId() + " (Total: " + votesReceived + ")");
-            int majority = (peers.size() + 1) / 2 + 1;
-            if (votesReceived >= majority) {
-                state.convertToLeader();
-                metrics.setLeader(true);
-                System.out.println("👑 Node [" + nodeId + "] IS NOW LEADER for term " + state.getCurrentTerm() + "!");
-                if (electionTimer != null) electionTimer.cancel(false);
-                for (String peer : peers) {
-                    nextIndex.put(peer,  state.getLog().getLastLogIndex() + 1);
-                    matchIndex.put(peer, -1);
+
+            // add() returns false if we've already counted this node's vote.
+            if (grantedVotes.add(resp.getSenderId())) {
+
+                System.out.println(
+                        "✅ Node [" + nodeId + "] received vote from "
+                                + resp.getSenderId()
+                                + " (Total: " + grantedVotes.size() + ")"
+                );
+
+                int majority = (peers.size() + 1) / 2 + 1;
+
+                if (grantedVotes.size() >= majority) {
+
+                    state.convertToLeader();
+
+                    metrics.setLeader(true);
+
+                    System.out.println( "👑 Node [" + nodeId + "] IS NOW LEADER for term "
+                                    + state.getCurrentTerm() + "!"
+                    );
+                    if (electionTimer != null)
+                        electionTimer.cancel(false);
+
+                    for (String peer : peers) {
+                        nextIndex.put(peer,
+                                state.getLog().getLastLogIndex() + 1);
+                        matchIndex.put(peer, -1);
+                    }
+
+                    startHeartbeatBroadcast();
                 }
-                startHeartbeatBroadcast();
             }
         }
     }
 
     private void startHeartbeatBroadcast() {
         if (heartbeatTimer != null && !heartbeatTimer.isDone()) heartbeatTimer.cancel(false);
+//        heartbeatTimer = scheduler.scheduleAtFixedRate(
+//                this::broadcastAppendEntries, 0, 500, TimeUnit.MILLISECONDS);
+
         heartbeatTimer = scheduler.scheduleAtFixedRate(
-                this::broadcastAppendEntries, 0, 500, TimeUnit.MILLISECONDS);
+                this::broadcastAppendEntries, 0, 200, TimeUnit.MILLISECONDS);
     }
 
     private void broadcastAppendEntries() { inbox.offer(new TriggerHeartbeatCommand()); }
@@ -845,5 +887,28 @@ public class RaftNode {
                 // peer unreachable — normal during elections
             }
         });
+    }
+    public void shutdown() {
+
+        running = false;
+
+        if (electionTimer != null)
+            electionTimer.cancel(true);
+
+        if (heartbeatTimer != null)
+            heartbeatTimer.cancel(true);
+
+        scheduler.shutdownNow();
+        rpcPool.shutdownNow();
+
+        inbox.clear();
+
+        try {
+            wal.close();
+        } catch (Exception ignored) {}
+
+        metrics.setLeader(false);
+
+        System.out.println("💀 Node [" + nodeId + "] shut down.");
     }
 }

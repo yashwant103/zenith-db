@@ -7,6 +7,7 @@ import com.zenith.raft.rpc.RaftMessage;
 import com.zenith.storage.MemoryEngine;
 import com.zenith.storage.Trade;
 import com.zenith.wal.WriteAheadLog;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -17,29 +18,6 @@ import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 
-/**
- * ZenithServer — NIO event loop + command orchestrator.
- *
- * FIXES FROM YOUR VERSION:
- *
- * BUG 1 — ByteBuffer.allocate(2048) too small for large AppendEntries JSON
- * A single AppendEntries with 10 log entries can easily exceed 2KB.
- * The buffer fills up, the JSON is truncated, MessageSerializer.fromJson()
- * throws an exception, and the Raft RPC is silently dropped.
- * Fix: increase to 65536 (64KB) — handles any realistic Raft message.
- *
- * BUG 2 — rawData = new String(buffer.array()).trim() reads null bytes
- * ByteBuffer.allocate() fills the buffer with 0x00 bytes. After reading N bytes,
- * the remaining (65536 - N) bytes are all null characters. new String(buffer.array())
- * includes all of them. trim() only removes leading/trailing whitespace — not null chars.
- * The JSON parser then fails on the embedded null bytes.
- * Fix: use new String(buffer.array(), 0, bytesRead) to read only actual bytes.
- *
- * BUG 3 — ZenithServer handles SELECT directly from MemoryEngine
- * SELECT bypasses Raft entirely — correct for reads in a CP system where
- * follower reads are acceptable. But the check `raftNode != null` is fragile.
- * Minor: raftNode is always non-null after construction — simplified check.
- */
 public class ZenithServer {
 
     private final MemoryEngine engine;
@@ -48,8 +26,7 @@ public class ZenithServer {
     private Selector selector;
     private final ZenithMetrics metrics;
 
-    // FIX BUG 1: 64KB buffer handles any realistic Raft JSON message
-    private static final int    BUFFER_SIZE = 65536;
+    private static final int BUFFER_SIZE = 262144;
 
     public ZenithServer(MemoryEngine engine, WriteAheadLog log, RaftNode raftNode, ZenithMetrics metrics) {
         this.engine   = engine;
@@ -62,11 +39,13 @@ public class ZenithServer {
         try {
             selector = Selector.open();
             ServerSocketChannel serverChannel = ServerSocketChannel.open();
-            serverChannel.bind(new InetSocketAddress(port));
+
+            // FIX: Explicitly bind to 0.0.0.0 so Docker exposes this to the host machine
+            serverChannel.bind(new InetSocketAddress("0.0.0.0", port));
             serverChannel.configureBlocking(false);
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-            System.out.println("🚀 ZenithDB NIO Server listening on port " + port + "...");
+            System.out.println("🚀 ZenithDB NIO Server listening on 0.0.0.0:" + port + "...");
 
             while (true) {
                 selector.select();
@@ -77,7 +56,7 @@ public class ZenithServer {
                     SelectionKey key = iter.next();
                     if      (key.isAcceptable()) handleAccept(serverChannel);
                     else if (key.isReadable())   handleRead(key);
-                    iter.remove(); // CRITICAL: must remove or event fires forever
+                    iter.remove();
                 }
             }
         } catch (IOException e) {
@@ -103,12 +82,10 @@ public class ZenithServer {
             }
             if (bytesRead == 0) return;
 
-            // FIX BUG 2: read exactly bytesRead bytes — not the entire null-padded buffer
             String rawData = new String(buffer.array(), 0, bytesRead).trim();
             if (rawData.isEmpty()) return;
 
             if (rawData.startsWith("{")) {
-                // Raft RPC from another node (JSON)
                 try {
                     RaftMessage msg = MessageSerializer.fromJson(rawData);
                     raftNode.receiveMessage(msg);
@@ -116,7 +93,6 @@ public class ZenithServer {
                     System.out.println("⚠️ Failed to parse Raft message: " + e.getMessage());
                 }
             } else {
-                // Plain-text client command
                 String response = processCommand(rawData);
                 client.write(ByteBuffer.wrap((response + "\n").getBytes()));
             }
@@ -131,7 +107,6 @@ public class ZenithServer {
 
         try {
             switch (parts[0]) {
-
                 case "SELECT" -> {
                     Trade t = engine.getTrade(parts[1]);
                     if (t != null) {
@@ -140,7 +115,6 @@ public class ZenithServer {
                     }
                     return "NOT_FOUND: Trade " + parts[1] + " does not exist.";
                 }
-
                 case "SELECT_TICKER" -> {
                     java.util.List<Trade> trades = engine.getTradesByTicker(parts[1]);
                     if (trades.isEmpty()) return "NOT_FOUND: No trades for ticker " + parts[1];
@@ -152,28 +126,21 @@ public class ZenithServer {
                     }
                     return sb.toString();
                 }
-
                 case "INSERT", "UPDATE", "DELETE" -> {
-                    // Idempotency check at gateway
                     String requestId = parts.length > 6 ? parts[6] : null;
                     if (requestId != null && engine.hasProcessed(requestId)) {
                         return "ALREADY_PROCESSED: " + requestId + " safely executed previously.";
                     }
-
-                    // FIX BUG 3: simplified null check
                     if (!raftNode.isLeader()) {
                         return "ERROR: I am a FOLLOWER. Send trades to the active LEADER.";
                     }
-
                     raftNode.submitClientCommand(parts[0], parts[1], rawCommand);
                     return "PENDING: Trade submitted to Raft Consensus Cluster.";
                 }
-
                 case "COMPACT" -> {
                     log.compact(engine);
                     return "SUCCESS: Database compacted and optimized.";
                 }
-
                 default -> { return "ERROR: Unknown command: " + parts[0]; }
             }
         } catch (Exception e) {

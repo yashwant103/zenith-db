@@ -134,19 +134,37 @@ public class RaftLog {
         return getEntry(lastIndex).getTerm();
     }
 
+//    public synchronized List<LogEntryDTO> getEntriesFrom(int absoluteNextIndex) {
+//        int arrayIndex = absoluteNextIndex - baseIndex;
+//
+//        if (arrayIndex < 0) {
+//            // The follower is so far behind, the data it needs has already been compacted into a snapshot!
+//            System.out.println("⚠️ Follower is too far behind! Requires Snapshot transfer.");
+//            return new ArrayList<>();
+//        }
+//
+//        if (arrayIndex > entries.size()) {
+//            return new ArrayList<>();
+//        }
+//        return new ArrayList<>(entries.subList(arrayIndex, entries.size()));
+//    }
+
+    // Used by the Leader to grab entries starting from a specific follower's nextIndex
     public synchronized List<LogEntryDTO> getEntriesFrom(int absoluteNextIndex) {
         int arrayIndex = absoluteNextIndex - baseIndex;
 
         if (arrayIndex < 0) {
-            // The follower is so far behind, the data it needs has already been compacted into a snapshot!
             System.out.println("⚠️ Follower is too far behind! Requires Snapshot transfer.");
             return new ArrayList<>();
         }
-
-        if (arrayIndex > entries.size()) {
+        if (arrayIndex >= entries.size()) {
             return new ArrayList<>();
         }
-        return new ArrayList<>(entries.subList(arrayIndex, entries.size()));
+
+        // FIX: Pagination / Batching!
+        // Never send more than 50 entries in a single network RPC to prevent OOM and JSON truncation.
+        int toIndex = Math.min(entries.size(), arrayIndex + 50);
+        return new ArrayList<>(entries.subList(arrayIndex, toIndex));
     }
 
     // ── NEW: THE COMPACTION TRIGGER ──
