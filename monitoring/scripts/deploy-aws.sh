@@ -10,10 +10,13 @@
 # 4. Run: chmod 400 zenith-key.pem
 #
 # WHAT THIS SCRIPT DOES:
-# 1. Creates a Security Group allowing ports 9001-9003 between nodes
+# 1. Creates a Security Group allowing ports 9001-9003 (Raft) and
+#    8001-8003 (metrics) between nodes
 # 2. Launches 3 t2.micro EC2 instances (free tier eligible)
-# 3. Installs Java 21 + Docker on each
-# 4. Copies your project and starts the 3-node cluster
+# 3. Installs Docker on each and builds the ZenithDB image there
+# 4. Runs one container per instance with the other two nodes' public
+#    IPs passed in as Raft peers (same CLI-arg contract docker-compose.yml
+#    uses locally) and a named Docker volume for WAL persistence
 #
 # COST: ~$0 on free tier (750 hours/month t2.micro free for 12 months)
 # If past free tier: ~$0.12/hour for 3 × t2.micro
@@ -56,8 +59,11 @@ aws ec2 authorize-security-group-ingress \
   --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0 \
   --region $REGION 2>/dev/null || true
 
-# Allow Raft + client ports from anywhere
-for PORT in 9001 9002 9003 8080; do
+# Allow Raft/client ports and each node's actual metrics port.
+# NOTE: 8080 was previously opened here, but no node ever listens on 8080 —
+# Main.java computes metricsPort = raftPort - 1000, so nodes on 9001/9002/9003
+# expose metrics on 8001/8002/8003 respectively (matches docker-compose.yml).
+for PORT in 9001 9002 9003 8001 8002 8003; do
   aws ec2 authorize-security-group-ingress \
     --group-id $SG_ID --protocol tcp --port $PORT --cidr 0.0.0.0/0 \
     --region $REGION 2>/dev/null || true
@@ -127,38 +133,44 @@ setup_node() {
 
   echo "⚙️  Setting up $node_name at $ip..."
 
-  # Install Java 21 + Docker
-  ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$ip << EOF
+  # Install Docker only — the app runs inside the container, so the host
+  # doesn't need a JDK or Maven at all.
+  ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$ip << 'EOF'
     sudo apt-get update -q
-    sudo apt-get install -y -q openjdk-21-jre-headless docker.io maven
+    sudo apt-get install -y -q docker.io
     sudo usermod -aG docker ubuntu
 EOF
 
-  # Copy project files
+  # Copy everything the Dockerfile needs to build the image
   scp -i $KEY_FILE -o StrictHostKeyChecking=no -r \
-    ../src ../pom.xml ubuntu@$ip:~/
+    ../src ../pom.xml ../Dockerfile ubuntu@$ip:~/
 
-  # Build and run
+  # FIX: previously this ran `mvn package` + bare `java -jar` directly on the
+  # EC2 host and patched peer IPs into Main.java via a sed text substitution —
+  # fragile (breaks silently if the source strings ever change) and it never
+  # actually used the Docker install above, contradicting the project's whole
+  # containerized design. Peers are passed as real CLI args instead — the
+  # same mechanism docker-compose.yml already uses locally — and the app
+  # builds/runs exactly as it does in Docker Compose.
   ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$ip << EOF
     cd ~
-    # Update Main.java peers to use real EC2 IPs
-    sed -i 's/127.0.0.1:9002/$peer1/g; s/127.0.0.1:9003/$peer2/g' \
-      src/main/java/com/zenith/Main.java 2>/dev/null || true
-
-    mvn clean package -DskipTests --enable-preview -q
-
-    # Run in background, log to file
-    nohup java --enable-preview -jar target/zenith-db-1.0-SNAPSHOT.jar \
-      $node_name $node_port > ~/zenith.log 2>&1 &
+    sudo docker build -t zenith-db .
+    sudo docker volume create zenith-data
+    sudo docker run -d --name zenith \
+      --restart unless-stopped \
+      -p ${node_port}:${node_port} \
+      -p $((node_port - 1000)):$((node_port - 1000)) \
+      -v zenith-data:/data \
+      zenith-db $node_name $node_port $peer1 $peer2
 
     echo "✅ $node_name started!"
 EOF
 }
 
 # ── STEP 7: Deploy to all 3 nodes ────────────────────────────
-setup_node $IP_A "Node-A" 9001 "$IP_B:9002" "$IP_C:9003"
-setup_node $IP_B "Node-B" 9002 "$IP_A:9001" "$IP_C:9003"
-setup_node $IP_C "Node-C" 9003 "$IP_A:9001" "$IP_B:9002"
+setup_node $IP_A "node-a" 9001 "$IP_B:9002" "$IP_C:9003"
+setup_node $IP_B "node-b" 9002 "$IP_A:9001" "$IP_C:9003"
+setup_node $IP_C "node-c" 9003 "$IP_A:9001" "$IP_B:9002"
 
 # ── DONE ─────────────────────────────────────────────────────
 echo ""
@@ -171,7 +183,7 @@ echo "  echo 'INSERT,T1,AAPL,100,150.0,PENDING' | nc $IP_A 9001"
 echo "  echo 'SELECT,T1'                         | nc $IP_A 9001"
 echo ""
 echo "View logs:"
-echo "  ssh -i $KEY_FILE ubuntu@$IP_A 'tail -f ~/zenith.log'"
+echo "  ssh -i $KEY_FILE ubuntu@$IP_A 'sudo docker logs -f zenith'"
 echo ""
 echo "Node IPs saved to cluster-ips.txt"
 echo "Node-A: $IP_A:9001" > cluster-ips.txt

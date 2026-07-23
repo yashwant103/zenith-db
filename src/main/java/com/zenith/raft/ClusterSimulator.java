@@ -20,7 +20,24 @@ public class ClusterSimulator {
     public static final Map<String, RaftNode> activeNodes = new ConcurrentHashMap<>();
 
     // This acts like our TCP socket layer for testing
+    //
+    // FIX: a real network partition is bidirectional — a node cut off from
+    // the cluster can neither receive NOR send. This only checked whether
+    // the RECIPIENT was currently active, not the SENDER. That meant a test
+    // isolating a node by removing it from activeNodes correctly blocked
+    // messages arriving *at* that node, but the isolated node's own
+    // outbound messages to still-active peers were delivered normally —
+    // an asymmetric partition, not a real one. Concretely: if the isolated
+    // node had been the leader, it kept successfully delivering heartbeats
+    // to the "remaining" majority, so those followers never saw a missing
+    // heartbeat and never started a new election — a real automated test
+    // run caught exactly this (majorityPartitionStillElectsLeader hung for
+    // the full wait window because the followers correctly, but
+    // misleadingly, still thought they had a healthy leader).
     public static void routeMessage(String targetNodeId, RaftMessage message) {
+        if (!activeNodes.containsKey(message.getSenderId())) {
+            return; // sender is currently "partitioned away" — drop silently, like a real dropped packet
+        }
         RaftNode target = activeNodes.get(targetNodeId);
         if (target != null) {
             // Simulate a tiny 10ms network delay, then drop it in their inbox
@@ -46,13 +63,21 @@ public class ClusterSimulator {
         // Old code created walA/walB/walC then passed NEW WriteAheadLog() to RaftNode
         // = 6 WAL instances all writing to zenith_db.log simultaneously → file corruption
         // = 3 leaked ScheduledExecutorService threads running forever
+        //
+        // REGRESSION CAUGHT DURING REVIEW: this got down to 3 WAL instances, but all
+        // three still called the no-arg WriteAheadLog() constructor, which always
+        // resolves to the SAME default /data/zenith_db.log file. That's still 3
+        // threads flushing to one file concurrently — the identical corruption bug,
+        // just with fewer culprits. WriteAheadLog(Path) exists specifically to avoid
+        // this (see ZenithChaosTest.makeWal) — use it here too, one file per node.
         MemoryEngine engineA = new MemoryEngine();
         MemoryEngine engineB = new MemoryEngine();
         MemoryEngine engineC = new MemoryEngine();
 
-        WriteAheadLog walA = new WriteAheadLog();
-        WriteAheadLog walB = new WriteAheadLog();
-        WriteAheadLog walC = new WriteAheadLog();
+        java.nio.file.Path simDir = java.nio.file.Path.of("simulator-data");
+        WriteAheadLog walA = new WriteAheadLog(simDir.resolve("node-a.log"));
+        WriteAheadLog walB = new WriteAheadLog(simDir.resolve("node-b.log"));
+        WriteAheadLog walC = new WriteAheadLog(simDir.resolve("node-c.log"));
 
         RaftNode nodeA = new RaftNode("Node-A", peersA, new RaftState(), engineA, walA, new ZenithMetrics("Node-A"));
         RaftNode nodeB = new RaftNode("Node-B", peersB, new RaftState(), engineB, walB, new ZenithMetrics("Node-B"));

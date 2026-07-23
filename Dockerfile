@@ -34,8 +34,14 @@ RUN ls -lh app.jar && echo "JAR copy successful"
 RUN mkdir -p /data && chown zenith:zenith /data
 USER zenith
 
+# NOTE on EXPOSE: this is documentation only (Docker doesn't enforce it) — the
+# actual port a given container listens on is whatever's passed as the 2nd
+# CLI arg (see docker-compose.yml "command:"), and its metrics port is always
+# (raft port - 1000), e.g. 9001 -> 8001. EXPOSE 8080 was stale/wrong here —
+# no node ever listens on 8080; nodes use 8001/8002/8003 (see Main.java and
+# docker-compose.yml port mappings).
 EXPOSE 9001 9002 9003
-EXPOSE 8080
+EXPOSE 8001 8002 8003
 
 VOLUME ["/data"]
 
