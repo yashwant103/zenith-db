@@ -197,38 +197,59 @@ public class MassLoadTest {
         for (int t = 0; t < threads; t++) {
             final int tid = t;
             pool.submit(() -> {
-                try (Socket sock = new Socket(HOST, port);
-                     PrintWriter out = new PrintWriter(
-                             new BufferedWriter(new OutputStreamWriter(sock.getOutputStream())), true);
-                     BufferedReader in = new BufferedReader(
-                             new InputStreamReader(sock.getInputStream()))) {
-
-                    sock.setSoTimeout(5000);
-
+                Socket sock = null;
+                PrintWriter out = null;
+                BufferedReader in = null;
+                try {
                     for (int op = 0; op < opsPerThread; op++) {
-                        String cmd = gen.next(tid, op);
-                        if (cmd == null) continue;
+                        try {
+                            String cmd = gen.next(tid, op);
+                            if (cmd == null) continue;
 
-                        long t0 = System.nanoTime();
-                        out.println(cmd);
-                        String resp = in.readLine();
-                        long t1 = System.nanoTime();
+                            // FIX: previously the connection was opened once
+                            // per thread outside this loop, and ANY exception
+                            // (e.g. a single response exceeding the 5s socket
+                            // timeout under real contention) was caught once
+                            // per THREAD, dumping that thread's entire
+                            // remaining op budget (up to opsPerThread, e.g.
+                            // 500-1000) into the failure count in one shot
+                            // and abandoning the thread entirely — massively
+                            // exaggerating the real failure rate. Now the
+                            // connection is opened lazily per-operation if
+                            // needed, and a failure only counts as ONE
+                            // failed operation before recovering.
+                            if (sock == null || sock.isClosed()) {
+                                sock = new Socket(HOST, port);
+                                sock.setSoTimeout(5000);
+                                out = new PrintWriter(
+                                        new BufferedWriter(new OutputStreamWriter(sock.getOutputStream())), true);
+                                in = new BufferedReader(new InputStreamReader(sock.getInputStream()));
+                            }
 
-                        phaseLatency.addAndGet(t1 - t0);
-                        totalLatencyNs.addAndGet(t1 - t0);
+                            long t0 = System.nanoTime();
+                            out.println(cmd);
+                            String resp = in.readLine();
+                            long t1 = System.nanoTime();
 
-                        if (resp != null && !resp.startsWith("ERROR") && !resp.startsWith("❌")) {
-                            phaseSuccess.incrementAndGet();
-                            totalSuccess.incrementAndGet();
-                        } else {
+                            phaseLatency.addAndGet(t1 - t0);
+                            totalLatencyNs.addAndGet(t1 - t0);
+
+                            if (resp != null && !resp.startsWith("ERROR") && !resp.startsWith("❌")) {
+                                phaseSuccess.incrementAndGet();
+                                totalSuccess.incrementAndGet();
+                            } else {
+                                phaseFailure.incrementAndGet();
+                                totalFailure.incrementAndGet();
+                            }
+                        } catch (Exception opEx) {
                             phaseFailure.incrementAndGet();
                             totalFailure.incrementAndGet();
+                            try { if (sock != null) sock.close(); } catch (Exception ignored) {}
+                            sock = null; // force a fresh connection on the next operation
                         }
                     }
-                } catch (Exception e) {
-                    phaseFailure.addAndGet(opsPerThread);
-                    totalFailure.addAndGet(opsPerThread);
                 } finally {
+                    try { if (sock != null) sock.close(); } catch (Exception ignored) {}
                     latch.countDown();
                 }
             });
@@ -252,7 +273,7 @@ public class MassLoadTest {
         progressThread.setDaemon(true);
         progressThread.start();
 
-        latch.await(120, TimeUnit.SECONDS);
+        latch.await(300, TimeUnit.SECONDS);
         pool.shutdown();
         progressThread.interrupt();
 
