@@ -27,7 +27,7 @@ public class MassLoadTest {
     // ── Configuration ──────────────────────────────────────────────────────
     private static final String HOST         = "localhost";
     private static final int    LEADER_PORT  = 9001;   // send writes to leader
-    private static final int    REPLICA_PORT = 9002;   // send reads to follower (read scaling)
+    private static final int    REPLICA_PORT = 9002;   // unused for reads — see Phase 2 fix comment; kept for reference/experimentation only
     private static final int    NUM_USERS    = 100;    // concurrent users
     private static final int    OPS_PER_USER = 1000;   // operations per user
     private static final int    TOTAL_OPS    = NUM_USERS * OPS_PER_USER; // 100,000
@@ -83,12 +83,24 @@ public class MassLoadTest {
 
         // ══════════════════════════════════════════════════════
         // PHASE 2 — HIGH VOLUME SELECT: 100 users × 300 reads
-        // Reads go to replica (node-b) to show read scaling
+        // FIX: reads now go to the LEADER, not a follower/"replica".
+        // This test originally sent reads to REPLICA_PORT (node-b) to
+        // demonstrate read scaling from a follower — but that directly
+        // contradicts RaftNode.isSafeForLinearizableRead(), which requires
+        // the answering node to actually be the leader (a leader-lease
+        // check preventing a partitioned/stale node from serving reads
+        // that could be wrong). This test predated that fix and was never
+        // updated, so every one of these 30,000 reads was correctly
+        // rejected with "not leader" — the safety mechanism working
+        // exactly as designed, not a real failure. This architecture
+        // deliberately trades away follower read-scaling for
+        // linearizability; there is no "replica reads" story here by
+        // design, so the benchmark should measure that honestly.
         // ══════════════════════════════════════════════════════
         System.out.println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        System.out.println("PHASE 2 — HIGH VOLUME SELECT (30,000 reads → replica port 9002)");
+        System.out.println("PHASE 2 — HIGH VOLUME SELECT (30,000 reads → leader, linearizable)");
         System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        runPhase(NUM_USERS, 300, REPLICA_PORT, (userId, opIdx) -> {
+        runPhase(NUM_USERS, 300, LEADER_PORT, (userId, opIdx) -> {
             if (tradeIds.isEmpty()) return null;
             String tid = tradeIds.get((userId * 300 + opIdx) % tradeIds.size());
             return "SELECT," + tid;
@@ -275,7 +287,7 @@ public class MassLoadTest {
         System.out.printf("  Ops per user    : %d%n", OPS_PER_USER);
         System.out.printf("  Total ops       : %,d%n", TOTAL_OPS);
         System.out.printf("  Write target    : localhost:%d (leader)%n", LEADER_PORT);
-        System.out.printf("  Read target     : localhost:%d (replica)%n", REPLICA_PORT);
+        System.out.printf("  Read target     : localhost:%d (leader — linearizable reads only, no follower read-scaling by design)%n", LEADER_PORT);
         System.out.println();
     }
 
