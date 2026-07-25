@@ -47,6 +47,17 @@ public class Main {
             WriteAheadLog log = new WriteAheadLog();
             log.recover(engine);
 
+            // FIX: WAL recovery restores trade data into MemoryEngine correctly,
+            // but never told the activeTrades gauge about it — that gauge only
+            // gets updated inside the live INSERT/DELETE write path
+            // (RaftNode.executeOnStateMachine). Without this, a node that just
+            // restarted shows 0 active trades on the dashboard until the next
+            // live write happens to touch it, even though its actual in-memory
+            // data is already correct (verifiable via the anti-entropy hash
+            // matching every other node). Found via a live Docker restart test,
+            // not a code review guess.
+            metrics.activeTrades.set(engine.size());
+
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 System.out.println("\n🛑 Shutdown signal received — flushing WAL...");
                 try { log.close(); } catch (Exception e) { System.err.println("WAL close error: " + e.getMessage()); }
