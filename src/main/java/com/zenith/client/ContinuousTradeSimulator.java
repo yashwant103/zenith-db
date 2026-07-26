@@ -330,7 +330,16 @@ public class ContinuousTradeSimulator {
                 String probeId = "PROBE" + System.currentTimeMillis();
                 out.println("INSERT," + probeId + ",PROBE,1,1.0,PENDING,PROBE-" + probeId);
                 String resp = in.readLine();
-                if (resp != null && resp.contains("inserted")) {
+                // FIX: was checking resp.contains("inserted"), but the real
+                // success response (see ZenithServer.processCommand) is
+                // "PENDING: Trade submitted to Raft Consensus Cluster." -
+                // that string never contains "inserted" anywhere, so this
+                // probe silently failed 100% of the time even against a
+                // healthy leader that correctly accepted the insert. Match
+                // the same success/failure convention already used
+                // elsewhere in this codebase (MassLoadTest, QuickTest):
+                // anything that isn't an ERROR response is a success.
+                if (resp != null && !resp.startsWith("ERROR") && !resp.contains("FOLLOWER")) {
                     return port;
                 }
             } catch (Exception ignored) {}
