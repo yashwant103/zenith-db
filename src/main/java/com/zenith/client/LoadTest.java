@@ -187,39 +187,68 @@ public class LoadTest {
                 try {
                     // Each thread opens ONE persistent connection for all its ops
                     // This is realistic — connection pooling like a real client
-                    try (Socket socket = new Socket(TARGET_HOST, TARGET_PORT);
-                         PrintWriter out = new PrintWriter(
-                                 new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
-                         BufferedReader in = new BufferedReader(
-                                 new InputStreamReader(socket.getInputStream()))) {
-
-                        socket.setSoTimeout(5000); // 5 second read timeout
-
+                    Socket socket = null;
+                    PrintWriter out = null;
+                    BufferedReader in = null;
+                    try {
                         for (int op = 0; op < opsPerThread; op++) {
                             String command = generator.generate(threadId, op);
                             if (command == null) continue; // skip null commands
 
-                            long opStart = System.nanoTime();
-                            out.println(command);
+                            try {
+                                if (socket == null || socket.isClosed()) {
+                                    socket = new Socket(TARGET_HOST, TARGET_PORT);
+                                    socket.setSoTimeout(5000);
+                                    out = new PrintWriter(
+                                            new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
+                                    in = new BufferedReader(
+                                            new InputStreamReader(socket.getInputStream()));
+                                }
 
-                            String response = in.readLine();
-                            long opEnd = System.nanoTime();
+                                long opStart = System.nanoTime();
+                                out.println(command);
 
-                            totalLatencyNs.addAndGet(opEnd - opStart);
+                                String response = in.readLine();
+                                long opEnd = System.nanoTime();
 
-                            if (response != null && !response.startsWith("ERROR") &&
-                                    !response.startsWith("❌")) {
-                                successCount.incrementAndGet();
-                            } else {
+                                totalLatencyNs.addAndGet(opEnd - opStart);
+
+                                // DIAGNOSTIC: print the actual raw response for the first
+                                // few operations of each phase (thread 0 only, to avoid
+                                // flooding the console) — this will show us definitively
+                                // what the server is actually sending back, instead of
+                                // guessing at the cause of the 0-success result.
+                                if (threadId == 0 && op < 3) {
+                                    System.out.println("  [DEBUG] sent: " + command);
+                                    System.out.println("  [DEBUG] recv: " + response);
+                                }
+
+                                if (response != null && !response.startsWith("ERROR") &&
+                                        !response.startsWith("❌")) {
+                                    successCount.incrementAndGet();
+                                } else {
+                                    failureCount.incrementAndGet();
+                                    if (threadId == 0 && op < 3) {
+                                        System.out.println("  [DEBUG] classified as FAILURE");
+                                    }
+                                }
+                            } catch (Exception opEx) {
                                 failureCount.incrementAndGet();
+                                if (threadId == 0 && op < 3) {
+                                    System.out.println("  [DEBUG] EXCEPTION on op " + op + ": " + opEx);
+                                }
+                                try { if (socket != null) socket.close(); } catch (Exception ignored) {}
+                                socket = null; // force reconnect on next iteration
                             }
                         }
+                    } finally {
+                        try { if (socket != null) socket.close(); } catch (Exception ignored) {}
+                        latch.countDown();
                     }
                 } catch (Exception e) {
-                    failureCount.addAndGet(opsPerThread);
-                    System.err.println("Thread " + threadId + " error: " + e.getMessage());
+                    System.err.println("Thread " + threadId + " fatal error: " + e.getMessage());
                 } finally {
-                    latch.countDown();
+                    // latch already counted down above in the normal path
                 }
             });
         }
