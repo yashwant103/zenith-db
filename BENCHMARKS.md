@@ -12,7 +12,7 @@ perfect number.
 
 ## 1. Functional correctness — verified live, zero errors
 
-`QuickTest` against a real running 3-node cluster:
+`ZenithLiveDemo` (Phase 1) against a real running 3-node cluster:
 
 ```
 INSERT,T001,AAPL,100,185.50,PENDING,REQ-001  → PENDING: Trade submitted to Raft Consensus Cluster.
@@ -142,7 +142,7 @@ fix it."* That's a stronger answer than any unverified big number.
 - No isolated, controlled measurement of average per-request latency in
   milliseconds exists yet in this document — the mechanism (`ZenithMetrics`
   latency tracking) works and is wired up correctly, it just hasn't been
-  captured from a clean, low-concurrency run. To get this: run `QuickTest`
+  captured from a clean, low-concurrency run. To get this: run `ZenithLiveDemo`
   or a handful of manual commands, then immediately query
   `zenith_request_latency_ms` at `localhost:9090/graph` — that'll give a
   real number for a light-load scenario, separate from the heavy-load
