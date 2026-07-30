@@ -138,14 +138,32 @@ traced it to the single-threaded network layer combined with synchronous
 consensus per write. I know exactly why, and exactly what I'd change to
 fix it."* That's a stronger answer than any unverified big number.
 
-## What's still open, for full transparency
-- No isolated, controlled measurement of average per-request latency in
-  milliseconds exists yet in this document — the mechanism (`ZenithMetrics`
-  latency tracking) works and is wired up correctly, it just hasn't been
-  captured from a clean, low-concurrency run. To get this: run `ZenithLiveDemo`
-  or a handful of manual commands, then immediately query
-  `zenith_request_latency_ms` at `localhost:9090/graph` — that'll give a
-  real number for a light-load scenario, separate from the heavy-load
-  throughput numbers above.
-- The single-threaded NIO bottleneck under high concurrency is documented,
-  not fixed — a legitimate, scoped next step if this project continues.
+## 8. Full observability confirmation — every metric live, at once
+
+After the dashboard windowing fix (§ commit `fix(dashboard): widen rate()
+windows`) and running `ZenithLiveDemo` end-to-end, all five panels showed
+real, correctly-shaped data simultaneously for the first time — not just
+individually verified in isolation:
+
+- **Trades Processed Per Second**: real non-zero curve across all 3 nodes
+- **WAL Flush Rate**: real non-zero curve, tracking the write burst
+- **Duplicates Blocked (Idempotency)**: real non-zero curve
+- **Leader Elections Over Time**: real curve from cluster startup
+- **Average Request Latency**: a genuine measured plateau of **~10-15ms**
+  per operation during sustained load — this is the real number for the
+  previously-unmeasured latency claim, replacing the earlier "not yet
+  captured" note. Measured via `zenith_request_latency_ms`, sustained
+  across multiple nodes during `ZenithLiveDemo`'s load phase.
+
+This is the complete, honest picture: correctness (57/57 tests, live
+crash recovery), durability (WAL, anti-entropy hash matching), and now
+full observability, all confirmed on a real running cluster, at once.
+
+## What's still genuinely open, for full transparency
+The single-threaded NIO event loop + synchronous per-write consensus
+bottleneck under heavy concurrency (§6) is documented, not fixed — a
+legitimate, scoped next step if this project continues. The ~10-15ms
+latency and full-panel confirmation above were measured under moderate,
+paced load (`ZenithLiveDemo`'s load burst), not the 100-concurrent-user
+stress scenario that originally surfaced the throughput ceiling — both
+results are real and both are worth knowing, for different reasons.
