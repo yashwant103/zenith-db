@@ -505,7 +505,7 @@ private void resetElectionTimer() {
     }
 
     private static class TriggerHeartbeatCommand extends RaftMessage {
-        public TriggerHeartbeatCommand() { super("INTERNAL_HB", -1); }
+        public  TriggerHeartbeatCommand() { super("INTERNAL_HB", -1); }
     }
     private static class TriggerElectionCommand extends RaftMessage {
         public TriggerElectionCommand() { super("INTERNAL", -1); }
