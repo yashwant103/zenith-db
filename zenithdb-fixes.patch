@@ -1,0 +1,146 @@
+diff --git a/src/main/java/com/zenith/client/ContinuousTradeDemo.java b/src/main/java/com/zenith/client/ContinuousTradeDemo.java
+index b8ce39b..c686244 100644
+--- a/src/main/java/com/zenith/client/ContinuousTradeDemo.java
++++ b/src/main/java/com/zenith/client/ContinuousTradeDemo.java
+@@ -419,6 +419,13 @@ public final class ContinuousTradeDemo {
+                     RETRY_BACKOFF_MS
+             );
+         }
++
++        // FIX: retries exhausted while still hitting a follower — this op is
++        // genuinely lost. Previously this fell off the end of the method
++        // without touching successes/failures, so the final summary silently
++        // undercounted (e.g. "Operations attempted: 0" while thousands of
++        // ops had actually been submitted and redirected).
++        failures.increment();
+     }
+ 
+     private static Connection connectToLeader()
+@@ -628,7 +635,12 @@ public final class ContinuousTradeDemo {
+ 
+         return r.contains("FOLLOWER")
+                 || r.contains("NOT THE LEADER")
+-                || r.contains("REDIRECT");
++                || r.contains("REDIRECT")
++                || r.contains("CANNOT GUARANTEE"); // FIX: SELECT-based leader probes get this
++                // message (not "FOLLOWER") from a genuine follower, or from a leader whose
++                // read-lease isn't confirmed yet — without this, connectToLeader() mistook
++                // that ambiguous response for "found the leader" and could permanently latch
++                // onto a follower.
+     }
+ 
+     private static int[] candidateOrder(
+diff --git a/src/main/java/com/zenith/client/ZenithLiveDemo.java b/src/main/java/com/zenith/client/ZenithLiveDemo.java
+index 0e84c1b..c64f39e 100644
+--- a/src/main/java/com/zenith/client/ZenithLiveDemo.java
++++ b/src/main/java/com/zenith/client/ZenithLiveDemo.java
+@@ -45,7 +45,8 @@ public class ZenithLiveDemo {
+ 
+     private static final int LOAD_THREADS     = 10;
+     private static final int OPS_PER_THREAD   = 300;  // 3,000 total ops in the load burst
+-    private static final int PACE_MS          = 50;   // delay between each op per thread
++    private static final int PACE_MS          = 50;   // delay between each op per thread
++    private static final int READ_LAG_OPS     = 10;   // how many ops to wait before reading/updating a just-written key (see kind==1 comment below)
+ 
+     public static void main(String[] args) throws Exception {
+         printBanner();
+@@ -159,10 +160,19 @@ public class ZenithLiveDemo {
+                             String reqId   = "LOADREQ-" + threadId + "-" + op;
+                             cmd = "INSERT," + tradeId + ",MSFT,10," + (100 + op) + ".00,PENDING," + reqId;
+                         } else if (kind == 1) {
+-                            cmd = "SELECT,LOAD-" + threadId + "-" + Math.max(0, op - 1);
++                            // FIX: was "op - 1" — reading a key one iteration after its own
++                            // INSERT races the async Raft commit (INSERT only returns
++                            // "PENDING", the write isn't applied yet) and was getting counted
++                            // as a failure below purely because it read too early, not because
++                            // anything was actually broken — the exact same benign race Phase 1
++                            // demonstrates on purpose (INSERT -> immediate SELECT -> NOT_FOUND,
++                            // then a later SELECT -> FOUND). READ_LAG_OPS puts real wall-clock
++                            // time (READ_LAG_OPS * PACE_MS) between a key's write and its first
++                            // read so this benchmark measures actual failures, not read timing.
++                            cmd = "SELECT,LOAD-" + threadId + "-" + Math.max(0, op - READ_LAG_OPS);
+                         } else {
+                             String reqId = "LOADUPD-" + threadId + "-" + op;
+-                            cmd = "UPDATE,LOAD-" + threadId + "-" + Math.max(0, op - 2) + ",EXECUTED," + reqId;
++                            cmd = "UPDATE,LOAD-" + threadId + "-" + Math.max(0, op - READ_LAG_OPS) + ",EXECUTED," + reqId;
+                         }
+ 
+                         try {
+diff --git a/src/main/java/com/zenith/raft/RaftNode.java b/src/main/java/com/zenith/raft/RaftNode.java
+index a159105..82882fd 100644
+--- a/src/main/java/com/zenith/raft/RaftNode.java
++++ b/src/main/java/com/zenith/raft/RaftNode.java
+@@ -23,7 +23,26 @@ public class RaftNode {
+     private final WriteAheadLog wal;
+     private final ZenithMetrics metrics;
+ 
+-    private static final int SNAPSHOT_THRESHOLD = 5;
++    // FIX (root cause of the "throughput/WAL/duplicates flatline under load,
++    // ~33% failure rate, only-one-node-looks-alive" bug): this was 5. At any
++    // real load rate, a follower falls more than 5 entries behind the leader
++    // routinely (heartbeats only go out every 200ms, and a rejected
++    // AppendEntries only backs nextIndex off by 1 per round-trip). Once a
++    // follower's nextIndex lags behind the LEADER's baseIndex, the leader has
++    // already discarded (compacted) the entries that follower still needs,
++    // and this implementation has no InstallSnapshot RPC to catch it up — so
++    // that follower is permanently stuck rejecting AppendEntries forever.
++    // With 3 nodes and majority=2, once BOTH followers get stuck this way
++    // (easy under sustained load since they fall behind around the same
++    // time), the LEADER can no longer reach majority on ANY new entry either
++    // — so commitIndex freezes cluster-wide and nothing ever applies again:
++    // zenith_trades_total stays flat, WAL flushes stop, duplicates checks
++    // never run (they happen at apply time), and AppendEntries
++    // rejected/sec tracks sent/sec 1:1. Raising the threshold buys headroom;
++    // the real fix is the matchIndex-aware guard added below, which makes it
++    // structurally impossible for the leader to discard anything a follower
++    // hasn't already received.
++    private static final int SNAPSHOT_THRESHOLD = 500;
+ 
+     private final BlockingQueue<RaftMessage> inbox    = new LinkedBlockingQueue<>();
+     private final ScheduledExecutorService scheduler  = Executors.newScheduledThreadPool(2);
+@@ -372,15 +391,37 @@ public class RaftNode {
+ 
+         int activeLogSize = state.getLog().getLastLogIndex() - state.getLog().getBaseIndex();
+         if (activeLogSize >= SNAPSHOT_THRESHOLD) {
+-            System.out.println("\n📦 [SNAPSHOT] Compacting log...");
+-            wal.compact(engine);
+-            state.getLog().compactLog(state.getLog().getLastApplied());
+-            int newBase = state.getLog().getBaseIndex();
+-            for (String peer : peers) {
+-                if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);
++            int compactCeiling = state.getLog().getLastApplied();
++
++            // FIX: never let the leader discard log entries a follower hasn't
++            // replicated yet. A follower compacting its own log only ever
++            // touches entries it already applied itself (nothing else in the
++            // cluster depends on that), so this guard is scoped to the leader.
++            // Without it, compaction races ahead of a lagging follower's
++            // nextIndex, that follower permanently loses the ability to catch
++            // up (no InstallSnapshot RPC exists here to rescue it), and once
++            // enough followers get stuck the leader can't reach majority on
++            // new entries either — see SNAPSHOT_THRESHOLD comment above for
++            // the full failure chain this was causing.
++            if (state.getRole() == RaftRole.LEADER) {
++                int safeCeiling = state.getLog().getLastLogIndex();
++                for (int peerMatch : matchIndex.values()) {
++                    safeCeiling = Math.min(safeCeiling, peerMatch);
++                }
++                compactCeiling = Math.min(compactCeiling, safeCeiling);
++            }
++
++            if (compactCeiling >= 0) {
++                System.out.println("\n📦 [SNAPSHOT] Compacting log...");
++                wal.compact(engine);
++                state.getLog().compactLog(compactCeiling);
++                int newBase = state.getLog().getBaseIndex();
++                for (String peer : peers) {
++                    if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);
++                }
++                String hash = com.zenith.storage.StateHasher.generateStateHash(engine);
++                System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");
+             }
+-            String hash = com.zenith.storage.StateHasher.generateStateHash(engine);
+-            System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");
+         }
+     }
+ 

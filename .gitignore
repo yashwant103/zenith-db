@@ -41,3 +41,5 @@ build/
 *.log
 simulator-data/
 data/
+ZenithDB_*.md
+ZENITHDB_INTERVIEW_COMMANDS.txt

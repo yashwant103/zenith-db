@@ -1,0 +1,269 @@
+ZENITHDB — INTERVIEW DEMO COMMAND SHEET
+==========================================
+
+PROJECT ROOT
+------------
+cd /d D:\Projects\zenith-db
+
+
+1. FRESH START
+--------------
+docker compose down
+docker compose up --build
+
+In a NEW terminal:
+cd /d D:\Projects\zenith-db
+docker compose ps
+
+
+2. CHECK ALL CONTAINERS
+-----------------------
+docker compose ps -a
+
+
+3. VIEW NODE LOGS
+-----------------
+docker compose logs --tail=100 node-a
+docker compose logs --tail=100 node-b
+docker compose logs --tail=100 node-c
+
+Follow all nodes:
+docker compose logs -f node-a node-b node-c
+
+
+4. FIND RAFT LEADER / ELECTION EVENTS
+--------------------------------------
+docker compose logs node-a | findstr /i "LEADER CANDIDATE FOLLOWER ELECTION term"
+docker compose logs node-b | findstr /i "LEADER CANDIDATE FOLLOWER ELECTION term"
+docker compose logs node-c | findstr /i "LEADER CANDIDATE FOLLOWER ELECTION term"
+
+
+5. BUILD / TEST
+---------------
+mvn clean compile
+mvn test
+
+
+6. NORMAL LIVE DEMO
+-------------------
+mvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ZenithLiveDemo"
+
+
+7. CONTINUOUS 2–3 MINUTE DEMO
+-----------------------------
+mvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ContinuousTradeDemo"
+
+
+8. CHECK PROMETHEUS METRICS FOR EACH NODE
+-----------------------------------------
+curl http://localhost:8081/metrics
+curl http://localhost:8082/metrics
+curl http://localhost:8083/metrics
+
+Leader:
+curl http://localhost:8081/metrics | findstr /i "is_leader"
+curl http://localhost:8082/metrics | findstr /i "is_leader"
+curl http://localhost:8083/metrics | findstr /i "is_leader"
+
+Raft term:
+curl http://localhost:8081/metrics | findstr /i "raft_term"
+curl http://localhost:8082/metrics | findstr /i "raft_term"
+curl http://localhost:8083/metrics | findstr /i "raft_term"
+
+Trades:
+curl http://localhost:8081/metrics | findstr /i "trades_total"
+curl http://localhost:8082/metrics | findstr /i "trades_total"
+curl http://localhost:8083/metrics | findstr /i "trades_total"
+
+WAL:
+curl http://localhost:8081/metrics | findstr /i "wal_flushes"
+curl http://localhost:8082/metrics | findstr /i "wal_flushes"
+curl http://localhost:8083/metrics | findstr /i "wal_flushes"
+
+Duplicates:
+curl http://localhost:8081/metrics | findstr /i "duplicates"
+curl http://localhost:8082/metrics | findstr /i "duplicates"
+curl http://localhost:8083/metrics | findstr /i "duplicates"
+
+
+9. RAFT REPLICATION METRICS
+---------------------------
+curl http://localhost:8081/metrics | findstr /i "append_entries"
+curl http://localhost:8082/metrics | findstr /i "append_entries"
+curl http://localhost:8083/metrics | findstr /i "append_entries"
+
+curl http://localhost:8081/metrics | findstr /i "replication"
+curl http://localhost:8082/metrics | findstr /i "replication"
+curl http://localhost:8083/metrics | findstr /i "replication"
+
+curl http://localhost:8081/metrics | findstr /i "state_machine"
+curl http://localhost:8082/metrics | findstr /i "state_machine"
+curl http://localhost:8083/metrics | findstr /i "state_machine"
+
+
+10. GRAFANA / PROMETHEUS
+------------------------
+Grafana:    http://localhost:3000
+Prometheus: http://localhost:9090
+
+For the continuous demo:
+- Grafana -> Last 15 minutes
+- Refresh -> 5 seconds
+- Start ContinuousTradeDemo
+- Keep dashboard visible
+
+
+11. FAULT TOLERANCE — STOP THE CURRENT LEADER
+---------------------------------------------
+First identify leader:
+curl http://localhost:8081/metrics | findstr /i "is_leader"
+curl http://localhost:8082/metrics | findstr /i "is_leader"
+curl http://localhost:8083/metrics | findstr /i "is_leader"
+
+If node-a is leader:
+docker compose stop node-a
+
+Watch:
+docker compose logs -f node-b node-c
+
+Then:
+docker compose ps
+
+
+12. RESTART FAILED NODE / CRASH RECOVERY
+----------------------------------------
+docker compose start node-a
+docker compose logs -f node-a
+
+Look for:
+- WAL recovery
+- Restored persisted Raft state
+- Restored persisted Raft log
+- follower / leader state
+- replication / catch-up
+
+
+13. WAL RECOVERY LOGS
+---------------------
+docker compose logs node-a | findstr /i "WAL recovery"
+docker compose logs node-b | findstr /i "WAL recovery"
+docker compose logs node-c | findstr /i "WAL recovery"
+
+docker compose logs node-a | findstr /i "Restored persisted"
+docker compose logs node-b | findstr /i "Restored persisted"
+docker compose logs node-c | findstr /i "Restored persisted"
+
+
+14. DOCKER HEALTH
+-----------------
+docker inspect --format="{{.State.Health.Status}}" zenith-node-a
+docker inspect --format="{{.State.Health.Status}}" zenith-node-b
+docker inspect --format="{{.State.Health.Status}}" zenith-node-c
+
+docker stats
+
+
+15. GIT — REVIEW CHANGES
+------------------------
+git status
+git diff
+git diff --check
+
+
+16. GIT — UPDATE WHOLE REPOSITORY
+---------------------------------
+git status
+git diff --check
+mvn clean compile
+mvn test
+
+git add .
+git status
+git diff --cached
+
+git commit -m "Update ZenithDB implementation"
+git push origin main
+
+
+17. DO NOT COMMIT THIS COMMAND FILE
+-----------------------------------
+Add this line to .gitignore:
+
+ZENITHDB_INTERVIEW_COMMANDS.txt
+
+Then:
+git status
+
+If the file had already been tracked:
+git rm --cached ZENITHDB_INTERVIEW_COMMANDS.txt
+
+Then commit the .gitignore change:
+git add .gitignore
+git commit -m "Ignore local interview command sheet"
+git push origin main
+
+
+18. COMPLETE INTERVIEW DEMO
+---------------------------
+TERMINAL 1:
+cd /d D:\Projects\zenith-db
+docker compose down
+docker compose up --build
+
+TERMINAL 2:
+cd /d D:\Projects\zenith-db
+docker compose ps
+
+After all 3 nodes are healthy:
+mvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ContinuousTradeDemo"
+
+Open:
+http://localhost:3000
+
+Show:
+- Leader status
+- Current Raft term
+- Cluster trade throughput
+- WAL flush activity
+- Duplicate/idempotency activity
+- Replication
+- State-machine applies
+- Request latency
+
+Then demonstrate fault tolerance:
+docker compose stop <CURRENT_LEADER>
+
+Watch:
+docker compose logs -f node-a node-b node-c
+
+After a new leader is elected:
+docker compose start <FAILED_NODE>
+
+Watch its recovery logs.
+
+Finally:
+docker compose ps
+
+
+19. CLEAN SHUTDOWN
+------------------
+docker compose down
+
+
+IMPORTANT RAFT INTERVIEW POINT
+------------------------------
+Do NOT say that every client request is independently sent to all 3 nodes.
+
+Correct flow:
+Client -> Leader -> Leader log -> Follower replication -> Majority ACK
+-> Commit -> State-machine application.
+
+Therefore:
+- Leader normally receives client traffic.
+- Followers should show replication / AppendEntries / ACK / state-machine activity.
+- Follower client-request metrics do not need to equal leader metrics.
+- A 3-node Raft cluster remains available after losing one node because
+  2/3 nodes still form a majority.
+
+
+END

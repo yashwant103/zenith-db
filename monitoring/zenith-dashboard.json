@@ -2,24 +2,37 @@
   "title": "ZenithDB Cluster Dashboard",
   "uid": "zenith-db",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 3,
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
       "title": "Leader Status (1 = Leader, 0 = Follower)",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
-      "targets": [{
-        "expr": "zenith_is_leader",
-        "legendFormat": "{{node}}"
-      }],
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "zenith_is_leader",
+          "legendFormat": "{{node}}"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "thresholds": {
             "steps": [
-              { "color": "blue", "value": 0 },
-              { "color": "green", "value": 1 }
+              {
+                "color": "blue",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
             ]
           }
         }
@@ -29,71 +42,271 @@
       "id": 2,
       "title": "Current Raft Term",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
-      "targets": [{
-        "expr": "zenith_raft_term",
-        "legendFormat": "{{node}}"
-      }]
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "zenith_raft_term",
+          "legendFormat": "{{node}}"
+        }
+      ]
     },
     {
       "id": 3,
       "title": "Active Trades in Memory",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
-      "targets": [{
-        "expr": "zenith_active_trades",
-        "legendFormat": "{{node}}"
-      }]
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "zenith_active_trades",
+          "legendFormat": "{{node}}"
+        }
+      ]
     },
     {
       "id": 4,
-      "title": "Trades Processed Per Second",
+      "title": "Trade Throughput (ops/sec) by Node",
       "type": "graph",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "targets": [{
-        "expr": "rate(zenith_trades_total[5m])",
-        "legendFormat": "{{node}} trades/sec"
-      }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "irate(zenith_trades_total[1m])",
+          "legendFormat": "{{node}} trades/sec"
+        }
+      ]
     },
     {
       "id": 5,
-      "title": "Leader Elections Over Time",
+      "title": "Leader Elections (last 5m) by Node",
       "type": "graph",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "targets": [{
-        "expr": "increase(zenith_leader_elections_total[5m])",
-        "legendFormat": "{{node}} elections"
-      }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "increase(zenith_leader_elections_total[5m])",
+          "legendFormat": "{{node}} elections"
+        }
+      ]
     },
     {
       "id": 6,
-      "title": "WAL Flush Rate",
+      "title": "WAL Flush Rate by Node",
       "type": "graph",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "targets": [{
-        "expr": "rate(zenith_wal_flushes_total[5m])",
-        "legendFormat": "{{node}} flushes/sec"
-      }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "expr": "irate(zenith_wal_flushes_total[1m])",
+          "legendFormat": "{{node}} flushes/sec"
+        }
+      ]
     },
     {
       "id": 7,
-      "title": "Duplicates Blocked (Idempotency)",
+      "title": "Duplicates Blocked/sec by Node",
       "type": "graph",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "targets": [{
-        "expr": "rate(zenith_duplicates_blocked_total[5m])",
-        "legendFormat": "{{node}} duplicates blocked/sec"
-      }]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "targets": [
+        {
+          "expr": "irate(zenith_duplicates_blocked_total[1m])",
+          "legendFormat": "{{node}} duplicates/sec"
+        }
+      ]
     },
     {
       "id": 8,
-      "title": "Average Request Latency (ms)",
+      "title": "Average Request Latency by Node (ms)",
       "type": "graph",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
-      "targets": [{
-        "expr": "zenith_request_latency_ms",
-        "legendFormat": "{{node}} avg latency ms"
-      }]
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "expr": "zenith_request_latency_ms",
+          "legendFormat": "{{node}} avg latency ms"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Cluster Total Trades",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "sum(zenith_trades_total)",
+          "legendFormat": "cluster total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Cluster Average Request Latency (ms)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "avg(zenith_request_latency_ms)",
+          "legendFormat": "cluster average"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "AppendEntries Received/sec by Node",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "rate(zenith_append_entries_received_total[15s])",
+          "legendFormat": "{{node}} received/sec"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "AppendEntries Sent/sec by Node",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "rate(zenith_append_entries_sent_total[15s])",
+          "legendFormat": "{{node}} sent/sec"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Replicated Log Entries/sec by Node",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "rate(zenith_replication_entries_received_total[15s])",
+          "legendFormat": "{{node}} entries/sec"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "State Machine Applies/sec by Node",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "rate(zenith_state_machine_applied_total[15s])",
+          "legendFormat": "{{node}} applied/sec"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Replication ACKs/sec by Node",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "targets": [
+        {
+          "expr": "rate(zenith_replication_acks_sent_total[15s])",
+          "legendFormat": "{{node}} ACK/sec"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "AppendEntries Rejections/sec by Node",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "targets": [
+        {
+          "expr": "rate(zenith_append_entries_rejected_total[15s])",
+          "legendFormat": "{{node}} rejected/sec"
+        }
+      ]
     }
   ]
 }

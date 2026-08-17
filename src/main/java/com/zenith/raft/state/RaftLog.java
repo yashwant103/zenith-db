@@ -197,4 +197,11 @@ public class RaftLog {
     public int getLastApplied() { return lastApplied; }
     public void setLastApplied(int lastApplied) { this.lastApplied = lastApplied; }
     public int getBaseIndex() { return baseIndex; }
+
+    /**
+     * Term of the last entry that was compacted into the snapshot boundary.
+     * When baseIndex > 0, the logical entry at baseIndex - 1 is represented
+     * by baseTerm rather than remaining in the in-memory entries list.
+     */
+    public int getBaseTerm() { return baseTerm; }
 }

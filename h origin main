@@ -1,0 +1,2169 @@
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mindex acc0fb4..42da948 100644[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@ -41,3 +41,5 @@[m [mbuild/[m
+ *.log[m
+ simulator-data/[m
+ data/[m
+[32m+[m[32mZenithDB_*.md[m
+[32m+[m[32mZENITHDB_INTERVIEW_COMMANDS.txt[m
+\ No newline at end of file[m
+[1mdiff --git a/.idea/misc.xml b/.idea/misc.xml[m
+[1mnew file mode 100644[m
+[1mindex 0000000..7ace097[m
+[1m--- /dev/null[m
+[1m+++ b/.idea/misc.xml[m
+[36m@@ -0,0 +1,14 @@[m
+[32m+[m[32m<?xml version="1.0" encoding="UTF-8"?>[m
+[32m+[m[32m<project version="4">[m
+[32m+[m[32m  <component name="ExternalStorageConfigurationManager" enabled="true" />[m
+[32m+[m[32m  <component name="MavenProjectsManager">[m
+[32m+[m[32m    <option name="originalFiles">[m
+[32m+[m[32m      <list>[m
+[32m+[m[32m        <option value="$PROJECT_DIR$/pom.xml" />[m
+[32m+[m[32m      </list>[m
+[32m+[m[32m    </option>[m
+[32m+[m[32m  </component>[m
+[32m+[m[32m  <component name="ProjectRootManager" version="2" languageLevel="JDK_21" default="true" project-jdk-name="temurin-21" project-jdk-type="JavaSDK">[m
+[32m+[m[32m    <output url="file://$PROJECT_DIR$/out" />[m
+[32m+[m[32m  </component>[m
+[32m+[m[32m</project>[m
+\ No newline at end of file[m
+[1mdiff --git a/ZENITHDB_INTERVIEW_COMMANDS b/ZENITHDB_INTERVIEW_COMMANDS[m
+[1mnew file mode 100644[m
+[1mindex 0000000..fb0c276[m
+[1m--- /dev/null[m
+[1m+++ b/ZENITHDB_INTERVIEW_COMMANDS[m
+[36m@@ -0,0 +1,269 @@[m
+[32m+[m[32mZENITHDB — INTERVIEW DEMO COMMAND SHEET[m
+[32m+[m[32m==========================================[m
+[32m+[m
+[32m+[m[32mPROJECT ROOT[m
+[32m+[m[32m------------[m
+[32m+[m[32mcd /d D:\Projects\zenith-db[m
+[32m+[m
+[32m+[m
+[32m+[m[32m1. FRESH START[m
+[32m+[m[32m--------------[m
+[32m+[m[32mdocker compose down[m
+[32m+[m[32mdocker compose up --build[m
+[32m+[m
+[32m+[m[32mIn a NEW terminal:[m
+[32m+[m[32mcd /d D:\Projects\zenith-db[m
+[32m+[m[32mdocker compose ps[m
+[32m+[m
+[32m+[m
+[32m+[m[32m2. CHECK ALL CONTAINERS[m
+[32m+[m[32m-----------------------[m
+[32m+[m[32mdocker compose ps -a[m
+[32m+[m
+[32m+[m
+[32m+[m[32m3. VIEW NODE LOGS[m
+[32m+[m[32m-----------------[m
+[32m+[m[32mdocker compose logs --tail=100 node-a[m
+[32m+[m[32mdocker compose logs --tail=100 node-b[m
+[32m+[m[32mdocker compose logs --tail=100 node-c[m
+[32m+[m
+[32m+[m[32mFollow all nodes:[m
+[32m+[m[32mdocker compose logs -f node-a node-b node-c[m
+[32m+[m
+[32m+[m
+[32m+[m[32m4. FIND RAFT LEADER / ELECTION EVENTS[m
+[32m+[m[32m--------------------------------------[m
+[32m+[m[32mdocker compose logs node-a | findstr /i "LEADER CANDIDATE FOLLOWER ELECTION term"[m
+[32m+[m[32mdocker compose logs node-b | findstr /i "LEADER CANDIDATE FOLLOWER ELECTION term"[m
+[32m+[m[32mdocker compose logs node-c | findstr /i "LEADER CANDIDATE FOLLOWER ELECTION term"[m
+[32m+[m
+[32m+[m
+[32m+[m[32m5. BUILD / TEST[m
+[32m+[m[32m---------------[m
+[32m+[m[32mmvn clean compile[m
+[32m+[m[32mmvn test[m
+[32m+[m
+[32m+[m
+[32m+[m[32m6. NORMAL LIVE DEMO[m
+[32m+[m[32m-------------------[m
+[32m+[m[32mmvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ZenithLiveDemo"[m
+[32m+[m
+[32m+[m
+[32m+[m[32m7. CONTINUOUS 2–3 MINUTE DEMO[m
+[32m+[m[32m-----------------------------[m
+[32m+[m[32mmvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ContinuousTradeDemo"[m
+[32m+[m
+[32m+[m
+[32m+[m[32m8. CHECK PROMETHEUS METRICS FOR EACH NODE[m
+[32m+[m[32m-----------------------------------------[m
+[32m+[m[32mcurl http://localhost:8081/metrics[m
+[32m+[m[32mcurl http://localhost:8082/metrics[m
+[32m+[m[32mcurl http://localhost:8083/metrics[m
+[32m+[m
+[32m+[m[32mLeader:[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "is_leader"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "is_leader"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "is_leader"[m
+[32m+[m
+[32m+[m[32mRaft term:[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "raft_term"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "raft_term"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "raft_term"[m
+[32m+[m
+[32m+[m[32mTrades:[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "trades_total"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "trades_total"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "trades_total"[m
+[32m+[m
+[32m+[m[32mWAL:[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "wal_flushes"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "wal_flushes"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "wal_flushes"[m
+[32m+[m
+[32m+[m[32mDuplicates:[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "duplicates"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "duplicates"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "duplicates"[m
+[32m+[m
+[32m+[m
+[32m+[m[32m9. RAFT REPLICATION METRICS[m
+[32m+[m[32m---------------------------[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "append_entries"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "append_entries"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "append_entries"[m
+[32m+[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "replication"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "replication"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "replication"[m
+[32m+[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "state_machine"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "state_machine"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "state_machine"[m
+[32m+[m
+[32m+[m
+[32m+[m[32m10. GRAFANA / PROMETHEUS[m
+[32m+[m[32m------------------------[m
+[32m+[m[32mGrafana:    http://localhost:3000[m
+[32m+[m[32mPrometheus: http://localhost:9090[m
+[32m+[m
+[32m+[m[32mFor the continuous demo:[m
+[32m+[m[32m- Grafana -> Last 15 minutes[m
+[32m+[m[32m- Refresh -> 5 seconds[m
+[32m+[m[32m- Start ContinuousTradeDemo[m
+[32m+[m[32m- Keep dashboard visible[m
+[32m+[m
+[32m+[m
+[32m+[m[32m11. FAULT TOLERANCE — STOP THE CURRENT LEADER[m
+[32m+[m[32m---------------------------------------------[m
+[32m+[m[32mFirst identify leader:[m
+[32m+[m[32mcurl http://localhost:8081/metrics | findstr /i "is_leader"[m
+[32m+[m[32mcurl http://localhost:8082/metrics | findstr /i "is_leader"[m
+[32m+[m[32mcurl http://localhost:8083/metrics | findstr /i "is_leader"[m
+[32m+[m
+[32m+[m[32mIf node-a is leader:[m
+[32m+[m[32mdocker compose stop node-a[m
+[32m+[m
+[32m+[m[32mWatch:[m
+[32m+[m[32mdocker compose logs -f node-b node-c[m
+[32m+[m
+[32m+[m[32mThen:[m
+[32m+[m[32mdocker compose ps[m
+[32m+[m
+[32m+[m
+[32m+[m[32m12. RESTART FAILED NODE / CRASH RECOVERY[m
+[32m+[m[32m----------------------------------------[m
+[32m+[m[32mdocker compose start node-a[m
+[32m+[m[32mdocker compose logs -f node-a[m
+[32m+[m
+[32m+[m[32mLook for:[m
+[32m+[m[32m- WAL recovery[m
+[32m+[m[32m- Restored persisted Raft state[m
+[32m+[m[32m- Restored persisted Raft log[m
+[32m+[m[32m- follower / leader state[m
+[32m+[m[32m- replication / catch-up[m
+[32m+[m
+[32m+[m
+[32m+[m[32m13. WAL RECOVERY LOGS[m
+[32m+[m[32m---------------------[m
+[32m+[m[32mdocker compose logs node-a | findstr /i "WAL recovery"[m
+[32m+[m[32mdocker compose logs node-b | findstr /i "WAL recovery"[m
+[32m+[m[32mdocker compose logs node-c | findstr /i "WAL recovery"[m
+[32m+[m
+[32m+[m[32mdocker compose logs node-a | findstr /i "Restored persisted"[m
+[32m+[m[32mdocker compose logs node-b | findstr /i "Restored persisted"[m
+[32m+[m[32mdocker compose logs node-c | findstr /i "Restored persisted"[m
+[32m+[m
+[32m+[m
+[32m+[m[32m14. DOCKER HEALTH[m
+[32m+[m[32m-----------------[m
+[32m+[m[32mdocker inspect --format="{{.State.Health.Status}}" zenith-node-a[m
+[32m+[m[32mdocker inspect --format="{{.State.Health.Status}}" zenith-node-b[m
+[32m+[m[32mdocker inspect --format="{{.State.Health.Status}}" zenith-node-c[m
+[32m+[m
+[32m+[m[32mdocker stats[m
+[32m+[m
+[32m+[m
+[32m+[m[32m15. GIT — REVIEW CHANGES[m
+[32m+[m[32m------------------------[m
+[32m+[m[32mgit status[m
+[32m+[m[32mgit diff[m
+[32m+[m[32mgit diff --check[m
+[32m+[m
+[32m+[m
+[32m+[m[32m16. GIT — UPDATE WHOLE REPOSITORY[m
+[32m+[m[32m---------------------------------[m
+[32m+[m[32mgit status[m
+[32m+[m[32mgit diff --check[m
+[32m+[m[32mmvn clean compile[m
+[32m+[m[32mmvn test[m
+[32m+[m
+[32m+[m[32mgit add .[m
+[32m+[m[32mgit status[m
+[32m+[m[32mgit diff --cached[m
+[32m+[m
+[32m+[m[32mgit commit -m "Update ZenithDB implementation"[m
+[32m+[m[32mgit push origin main[m
+[32m+[m
+[32m+[m
+[32m+[m[32m17. DO NOT COMMIT THIS COMMAND FILE[m
+[32m+[m[32m-----------------------------------[m
+[32m+[m[32mAdd this line to .gitignore:[m
+[32m+[m
+[32m+[m[32mZENITHDB_INTERVIEW_COMMANDS.txt[m
+[32m+[m
+[32m+[m[32mThen:[m
+[32m+[m[32mgit status[m
+[32m+[m
+[32m+[m[32mIf the file had already been tracked:[m
+[32m+[m[32mgit rm --cached ZENITHDB_INTERVIEW_COMMANDS.txt[m
+[32m+[m
+[32m+[m[32mThen commit the .gitignore change:[m
+[32m+[m[32mgit add .gitignore[m
+[32m+[m[32mgit commit -m "Ignore local interview command sheet"[m
+[32m+[m[32mgit push origin main[m
+[32m+[m
+[32m+[m
+[32m+[m[32m18. COMPLETE INTERVIEW DEMO[m
+[32m+[m[32m---------------------------[m
+[32m+[m[32mTERMINAL 1:[m
+[32m+[m[32mcd /d D:\Projects\zenith-db[m
+[32m+[m[32mdocker compose down[m
+[32m+[m[32mdocker compose up --build[m
+[32m+[m
+[32m+[m[32mTERMINAL 2:[m
+[32m+[m[32mcd /d D:\Projects\zenith-db[m
+[32m+[m[32mdocker compose ps[m
+[32m+[m
+[32m+[m[32mAfter all 3 nodes are healthy:[m
+[32m+[m[32mmvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ContinuousTradeDemo"[m
+[32m+[m
+[32m+[m[32mOpen:[m
+[32m+[m[32mhttp://localhost:3000[m
+[32m+[m
+[32m+[m[32mShow:[m
+[32m+[m[32m- Leader status[m
+[32m+[m[32m- Current Raft term[m
+[32m+[m[32m- Cluster trade throughput[m
+[32m+[m[32m- WAL flush activity[m
+[32m+[m[32m- Duplicate/idempotency activity[m
+[32m+[m[32m- Replication[m
+[32m+[m[32m- State-machine applies[m
+[32m+[m[32m- Request latency[m
+[32m+[m
+[32m+[m[32mThen demonstrate fault tolerance:[m
+[32m+[m[32mdocker compose stop <CURRENT_LEADER>[m
+[32m+[m
+[32m+[m[32mWatch:[m
+[32m+[m[32mdocker compose logs -f node-a node-b node-c[m
+[32m+[m
+[32m+[m[32mAfter a new leader is elected:[m
+[32m+[m[32mdocker compose start <FAILED_NODE>[m
+[32m+[m
+[32m+[m[32mWatch its recovery logs.[m
+[32m+[m
+[32m+[m[32mFinally:[m
+[32m+[m[32mdocker compose ps[m
+[32m+[m
+[32m+[m
+[32m+[m[32m19. CLEAN SHUTDOWN[m
+[32m+[m[32m------------------[m
+[32m+[m[32mdocker compose down[m
+[32m+[m
+[32m+[m
+[32m+[m[32mIMPORTANT RAFT INTERVIEW POINT[m
+[32m+[m[32m------------------------------[m
+[32m+[m[32mDo NOT say that every client request is independently sent to all 3 nodes.[m
+[32m+[m
+[32m+[m[32mCorrect flow:[m
+[32m+[m[32mClient -> Leader -> Leader log -> Follower replication -> Majority ACK[m
+[32m+[m[32m-> Commit -> State-machine application.[m
+[32m+[m
+[32m+[m[32mTherefore:[m
+[32m+[m[32m- Leader normally receives client traffic.[m
+[32m+[m[32m- Followers should show replication / AppendEntries / ACK / state-machine activity.[m
+[32m+[m[32m- Follower client-request metrics do not need to equal leader metrics.[m
+[32m+[m[32m- A 3-node Raft cluster remains available after losing one node because[m
+[32m+[m[32m  2/3 nodes still form a majority.[m
+[32m+[m
+[32m+[m
+[32m+[m[32mEND[m
+\ No newline at end of file[m
+[1mdiff --git a/monitoring/zenith-dashboard.json b/monitoring/zenith-dashboard.json[m
+[1mindex 56c0d24..a7e0293 100644[m
+[1m--- a/monitoring/zenith-dashboard.json[m
+[1m+++ b/monitoring/zenith-dashboard.json[m
+[36m@@ -2,24 +2,37 @@[m
+   "title": "ZenithDB Cluster Dashboard",[m
+   "uid": "zenith-db",[m
+   "schemaVersion": 38,[m
+[31m-  "version": 1,[m
+[32m+[m[32m  "version": 3,[m
+   "refresh": "5s",[m
+   "panels": [[m
+     {[m
+       "id": 1,[m
+       "title": "Leader Status (1 = Leader, 0 = Follower)",[m
+       "type": "stat",[m
+[31m-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "zenith_is_leader",[m
+[31m-        "legendFormat": "{{node}}"[m
+[31m-      }],[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 4,[m
+[32m+[m[32m        "w": 8,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 0[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "zenith_is_leader",[m
+[32m+[m[32m          "legendFormat": "{{node}}"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ],[m
+       "fieldConfig": {[m
+         "defaults": {[m
+           "thresholds": {[m
+             "steps": [[m
+[31m-              { "color": "blue", "value": 0 },[m
+[31m-              { "color": "green", "value": 1 }[m
+[32m+[m[32m              {[m
+[32m+[m[32m                "color": "blue",[m
+[32m+[m[32m                "value": 0[m
+[32m+[m[32m              },[m
+[32m+[m[32m              {[m
+[32m+[m[32m                "color": "green",[m
+[32m+[m[32m                "value": 1[m
+[32m+[m[32m              }[m
+             ][m
+           }[m
+         }[m
+[36m@@ -29,71 +42,271 @@[m
+       "id": 2,[m
+       "title": "Current Raft Term",[m
+       "type": "stat",[m
+[31m-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "zenith_raft_term",[m
+[31m-        "legendFormat": "{{node}}"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 4,[m
+[32m+[m[32m        "w": 8,[m
+[32m+[m[32m        "x": 8,[m
+[32m+[m[32m        "y": 0[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "zenith_raft_term",[m
+[32m+[m[32m          "legendFormat": "{{node}}"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     },[m
+     {[m
+       "id": 3,[m
+       "title": "Active Trades in Memory",[m
+       "type": "stat",[m
+[31m-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "zenith_active_trades",[m
+[31m-        "legendFormat": "{{node}}"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 4,[m
+[32m+[m[32m        "w": 8,[m
+[32m+[m[32m        "x": 16,[m
+[32m+[m[32m        "y": 0[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "zenith_active_trades",[m
+[32m+[m[32m          "legendFormat": "{{node}}"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     },[m
+     {[m
+       "id": 4,[m
+[31m-      "title": "Trades Processed Per Second",[m
+[32m+[m[32m      "title": "Trade Throughput (ops/sec) by Node",[m
+       "type": "graph",[m
+[31m-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "rate(zenith_trades_total[5m])",[m
+[31m-        "legendFormat": "{{node}} trades/sec"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 4[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "irate(zenith_trades_total[1m])",[m
+[32m+[m[32m          "legendFormat": "{{node}} trades/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     },[m
+     {[m
+       "id": 5,[m
+[31m-      "title": "Leader Elections Over Time",[m
+[32m+[m[32m      "title": "Leader Elections (last 5m) by Node",[m
+       "type": "graph",[m
+[31m-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "increase(zenith_leader_elections_total[5m])",[m
+[31m-        "legendFormat": "{{node}} elections"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 12,[m
+[32m+[m[32m        "y": 4[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "increase(zenith_leader_elections_total[5m])",[m
+[32m+[m[32m          "legendFormat": "{{node}} elections"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     },[m
+     {[m
+       "id": 6,[m
+[31m-      "title": "WAL Flush Rate",[m
+[32m+[m[32m      "title": "WAL Flush Rate by Node",[m
+       "type": "graph",[m
+[31m-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "rate(zenith_wal_flushes_total[5m])",[m
+[31m-        "legendFormat": "{{node}} flushes/sec"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 12[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "irate(zenith_wal_flushes_total[1m])",[m
+[32m+[m[32m          "legendFormat": "{{node}} flushes/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     },[m
+     {[m
+       "id": 7,[m
+[31m-      "title": "Duplicates Blocked (Idempotency)",[m
+[32m+[m[32m      "title": "Duplicates Blocked/sec by Node",[m
+       "type": "graph",[m
+[31m-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "rate(zenith_duplicates_blocked_total[5m])",[m
+[31m-        "legendFormat": "{{node}} duplicates blocked/sec"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 12,[m
+[32m+[m[32m        "y": 12[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "irate(zenith_duplicates_blocked_total[1m])",[m
+[32m+[m[32m          "legendFormat": "{{node}} duplicates/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     },[m
+     {[m
+       "id": 8,[m
+[31m-      "title": "Average Request Latency (ms)",[m
+[32m+[m[32m      "title": "Average Request Latency by Node (ms)",[m
+[32m+[m[32m      "type": "graph",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 24,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 20[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "zenith_request_latency_ms",[m
+[32m+[m[32m          "legendFormat": "{{node}} avg latency ms"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ],[m
+[32m+[m[32m      "fieldConfig": {[m
+[32m+[m[32m        "defaults": {[m
+[32m+[m[32m          "unit": "ms"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 9,[m
+[32m+[m[32m      "title": "Cluster Total Trades",[m
+[32m+[m[32m      "type": "stat",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 4,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 28[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "sum(zenith_trades_total)",[m
+[32m+[m[32m          "legendFormat": "cluster total"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ],[m
+[32m+[m[32m      "fieldConfig": {[m
+[32m+[m[32m        "defaults": {[m
+[32m+[m[32m          "unit": "short"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 10,[m
+[32m+[m[32m      "title": "Cluster Average Request Latency (ms)",[m
+[32m+[m[32m      "type": "stat",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 4,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 12,[m
+[32m+[m[32m        "y": 28[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "avg(zenith_request_latency_ms)",[m
+[32m+[m[32m          "legendFormat": "cluster average"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ],[m
+[32m+[m[32m      "fieldConfig": {[m
+[32m+[m[32m        "defaults": {[m
+[32m+[m[32m          "unit": "ms"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 11,[m
+[32m+[m[32m      "title": "AppendEntries Received/sec by Node",[m
+[32m+[m[32m      "type": "graph",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 32[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "rate(zenith_append_entries_received_total[15s])",[m
+[32m+[m[32m          "legendFormat": "{{node}} received/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 12,[m
+[32m+[m[32m      "title": "AppendEntries Sent/sec by Node",[m
+[32m+[m[32m      "type": "graph",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 12,[m
+[32m+[m[32m        "y": 32[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "rate(zenith_append_entries_sent_total[15s])",[m
+[32m+[m[32m          "legendFormat": "{{node}} sent/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 13,[m
+[32m+[m[32m      "title": "Replicated Log Entries/sec by Node",[m
+       "type": "graph",[m
+[31m-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },[m
+[31m-      "targets": [{[m
+[31m-        "expr": "zenith_request_latency_ms",[m
+[31m-        "legendFormat": "{{node}} avg latency ms"[m
+[31m-      }][m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 40[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "rate(zenith_replication_entries_received_total[15s])",[m
+[32m+[m[32m          "legendFormat": "{{node}} entries/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 14,[m
+[32m+[m[32m      "title": "State Machine Applies/sec by Node",[m
+[32m+[m[32m      "type": "graph",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 12,[m
+[32m+[m[32m        "y": 40[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "rate(zenith_state_machine_applied_total[15s])",[m
+[32m+[m[32m          "legendFormat": "{{node}} applied/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 15,[m
+[32m+[m[32m      "title": "Replication ACKs/sec by Node",[m
+[32m+[m[32m      "type": "graph",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 0,[m
+[32m+[m[32m        "y": 48[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "rate(zenith_replication_acks_sent_total[15s])",[m
+[32m+[m[32m          "legendFormat": "{{node}} ACK/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+[32m+[m[32m    },[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "id": 16,[m
+[32m+[m[32m      "title": "AppendEntries Rejections/sec by Node",[m
+[32m+[m[32m      "type": "graph",[m
+[32m+[m[32m      "gridPos": {[m
+[32m+[m[32m        "h": 8,[m
+[32m+[m[32m        "w": 12,[m
+[32m+[m[32m        "x": 12,[m
+[32m+[m[32m        "y": 48[m
+[32m+[m[32m      },[m
+[32m+[m[32m      "targets": [[m
+[32m+[m[32m        {[m
+[32m+[m[32m          "expr": "rate(zenith_append_entries_rejected_total[15s])",[m
+[32m+[m[32m          "legendFormat": "{{node}} rejected/sec"[m
+[32m+[m[32m        }[m
+[32m+[m[32m      ][m
+     }[m
+   ][m
+ }[m
+\ No newline at end of file[m
+[1mdiff --git a/pom.xml b/pom.xml[m
+[1mindex 10e89e0..7431941 100644[m
+[1m--- a/pom.xml[m
+[1m+++ b/pom.xml[m
+[36m@@ -38,6 +38,12 @@[m
+                 </configuration>[m
+             </plugin>[m
+ [m
+[32m+[m[32m            <plugin>[m
+[32m+[m[32m                <groupId>org.codehaus.mojo</groupId>[m
+[32m+[m[32m                <artifactId>exec-maven-plugin</artifactId>[m
+[32m+[m[32m                <version>3.1.0</version>[m
+[32m+[m[32m            </plugin>[m
+[32m+[m
+             <!--[m
+                 maven-shade-plugin — builds a fat JAR with ALL dependencies bundled.[m
+                 WHY THIS IS NEEDED:[m
+[1mdiff --git a/src/main/java/com/zenith/client/ContinuousTradeDemo.java b/src/main/java/com/zenith/client/ContinuousTradeDemo.java[m
+[1mnew file mode 100644[m
+[1mindex 0000000..05b5433[m
+[1m--- /dev/null[m
+[1m+++ b/src/main/java/com/zenith/client/ContinuousTradeDemo.java[m
+[36m@@ -0,0 +1,920 @@[m
+[32m+[m[32mpackage com.zenith.client;[m
+[32m+[m
+[32m+[m[32mimport java.io.*;[m
+[32m+[m[32mimport java.net.*;[m
+[32m+[m[32mimport java.time.Duration;[m
+[32m+[m[32mimport java.time.Instant;[m
+[32m+[m[32mimport java.util.*;[m
+[32m+[m[32mimport java.util.concurrent.*;[m
+[32m+[m[32mimport java.util.concurrent.atomic.*;[m
+[32m+[m[32mimport java.util.concurrent.locks.LockSupport;[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * ZenithDB ContinuousTradeDemo[m
+[32m+[m[32m *[m
+[32m+[m[32m * Interview/demo workload:[m
+[32m+[m[32m *   - 60,000 unique INSERT trades[m
+[32m+[m[32m *   - runs for approximately 150 seconds (2.5 minutes)[m
+[32m+[m[32m *   - 20 concurrent workers[m
+[32m+[m[32m *   - ~400 client operations/sec target[m
+[32m+[m[32m *   - automatically discovers/re-discovers the current Raft leader[m
+[32m+[m[32m *   - keeps sending traffic continuously so Grafana has a long visible window[m
+[32m+[m[32m *[m
+[32m+[m[32m * Usage:[m
+[32m+[m[32m *   mvn clean compile exec:java -Dexec.mainClass="com.zenith.client.ContinuousTradeDemo"[m
+[32m+[m[32m *[m
+[32m+[m[32m * Optional arguments:[m
+[32m+[m[32m *   args[0] = trade count (default 60000)[m
+[32m+[m[32m *   args[1] = duration seconds (default 150)[m
+[32m+[m[32m *   args[2] = worker count (default 20)[m
+[32m+[m[32m *[m
+[32m+[m[32m * Example:[m
+[32m+[m[32m *   mvn exec:java -Dexec.mainClass="com.zenith.client.ContinuousTradeDemo" \[m
+[32m+[m[32m *       -Dexec.args="60000 150 20"[m
+[32m+[m[32m */[m
+[32m+[m[32mpublic final class ContinuousTradeDemo {[m
+[32m+[m
+[32m+[m[32m    private static final String HOST = "localhost";[m
+[32m+[m
+[32m+[m[32m    private static final int[] NODE_PORTS = {9001, 9002, 9003};[m
+[32m+[m
+[32m+[m[32m    private static final int DEFAULT_TRADES = 60_000;[m
+[32m+[m[32m    private static final int DEFAULT_DURATION_SECONDS = 150;[m
+[32m+[m[32m    private static final int DEFAULT_WORKERS = 20;[m
+[32m+[m
+[32m+[m[32m    private static final int CONNECT_TIMEOUT_MS = 1_500;[m
+[32m+[m[32m    private static final int READ_TIMEOUT_MS = 3_000;[m
+[32m+[m[32m    private static final int RETRY_BACKOFF_MS = 50;[m
+[32m+[m
+[32m+[m[32m    private static final List<String> TICKERS = List.of([m
+[32m+[m[32m            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",[m
+[32m+[m[32m            "NVDA", "META", "JPM", "BAC", "GS",[m
+[32m+[m[32m            "MS", "BLK"[m
+[32m+[m[32m    );[m
+[32m+[m
+[32m+[m[32m    private static final AtomicInteger leaderPort = new AtomicInteger(9001);[m
+[32m+[m[32m    private static final AtomicInteger nextTrade = new AtomicInteger(1);[m
+[32m+[m
+[32m+[m[32m    private static final LongAdder submitted = new LongAdder();[m
+[32m+[m[32m    private static final LongAdder successes = new LongAdder();[m
+[32m+[m[32m    private static final LongAdder failures = new LongAdder();[m
+[32m+[m[32m    private static final LongAdder leaderRedirects = new LongAdder();[m
+[32m+[m[32m    private static final LongAdder retries = new LongAdder();[m
+[32m+[m
+[32m+[m[32m    private static final AtomicBoolean running = new AtomicBoolean(true);[m
+[32m+[m
+[32m+[m[32m    private ContinuousTradeDemo() {}[m
+[32m+[m
+[32m+[m[32m    public static void main(String[] args) throws Exception {[m
+[32m+[m
+[32m+[m[32m        int totalTrades = parseInt(args, 0, DEFAULT_TRADES);[m
+[32m+[m[32m        int durationSeconds = parseInt(args, 1, DEFAULT_DURATION_SECONDS);[m
+[32m+[m[32m        int workers = parseInt(args, 2, DEFAULT_WORKERS);[m
+[32m+[m
+[32m+[m[32m        if (totalTrades <= 0 || durationSeconds <= 0 || workers <= 0) {[m
+[32m+[m[32m            throw new IllegalArgumentException([m
+[32m+[m[32m                    "trade count, duration and workers must be > 0"[m
+[32m+[m[32m            );[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        double targetOpsPerSecond =[m
+[32m+[m[32m                (double) totalTrades / durationSeconds;[m
+[32m+[m
+[32m+[m[32m        printBanner([m
+[32m+[m[32m                totalTrades,[m
+[32m+[m[32m                durationSeconds,[m
+[32m+[m[32m                workers,[m
+[32m+[m[32m                targetOpsPerSecond[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println("Finding current Raft leader...");[m
+[32m+[m
+[32m+[m[32m        int discovered = discoverLeader();[m
+[32m+[m
+[32m+[m[32m        if (discovered == -1) {[m
+[32m+[m[32m            System.err.println([m
+[32m+[m[32m                    "No leader found on ports 9001/9002/9003."[m
+[32m+[m[32m            );[m
+[32m+[m[32m            System.err.println([m
+[32m+[m[32m                    "Run: docker compose up -d --build"[m
+[32m+[m[32m            );[m
+[32m+[m[32m            return;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        leaderPort.set(discovered);[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "✓ Leader found on port " + discovered[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println();[m
+[32m+[m[32m        System.out.println("Grafana     : http://localhost:3000");[m
+[32m+[m[32m        System.out.println("Prometheus  : http://localhost:9090");[m
+[32m+[m[32m        System.out.println();[m
+[32m+[m
+[32m+[m[32m        System.out.println("Starting in 3 seconds...");[m
+[32m+[m[32m        Thread.sleep(3000);[m
+[32m+[m
+[32m+[m[32m        Instant start = Instant.now();[m
+[32m+[m
+[32m+[m[32m        Instant deadline =[m
+[32m+[m[32m                start.plusSeconds(durationSeconds);[m
+[32m+[m
+[32m+[m[32m        ScheduledExecutorService progress =[m
+[32m+[m[32m                Executors.newSingleThreadScheduledExecutor();[m
+[32m+[m
+[32m+[m[32m        ExecutorService pool =[m
+[32m+[m[32m                Executors.newFixedThreadPool(workers);[m
+[32m+[m
+[32m+[m[32m        progress.scheduleAtFixedRate([m
+[32m+[m[32m                () -> printProgress([m
+[32m+[m[32m                        start,[m
+[32m+[m[32m                        totalTrades,[m
+[32m+[m[32m                        deadline[m
+[32m+[m[32m                ),[m
+[32m+[m[32m                5,[m
+[32m+[m[32m                5,[m
+[32m+[m[32m                TimeUnit.SECONDS[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        List<Future<?>> futures = new ArrayList<>();[m
+[32m+[m
+[32m+[m[32m        try {[m
+[32m+[m
+[32m+[m[32m            for (int i = 0; i < workers; i++) {[m
+[32m+[m
+[32m+[m[32m                final int workerId = i;[m
+[32m+[m
+[32m+[m[32m                futures.add([m
+[32m+[m[32m                        pool.submit(() ->[m
+[32m+[m[32m                                workerLoop([m
+[32m+[m[32m                                        workerId,[m
+[32m+[m[32m                                        totalTrades,[m
+[32m+[m[32m                                        deadline,[m
+[32m+[m[32m                                        targetOpsPerSecond,[m
+[32m+[m[32m                                        workers[m
+[32m+[m[32m                                )[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                );[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            for (Future<?> future : futures) {[m
+[32m+[m
+[32m+[m[32m                try {[m
+[32m+[m[32m                    future.get();[m
+[32m+[m
+[32m+[m[32m                } catch (ExecutionException e) {[m
+[32m+[m
+[32m+[m[32m                    System.err.println([m
+[32m+[m[32m                            "Worker failed: " +[m
+[32m+[m[32m                                    e.getCause()[m
+[32m+[m[32m                    );[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m        } finally {[m
+[32m+[m
+[32m+[m[32m            running.set(false);[m
+[32m+[m
+[32m+[m[32m            progress.shutdownNow();[m
+[32m+[m
+[32m+[m[32m            pool.shutdownNow();[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        long elapsedMs =[m
+[32m+[m[32m                Duration.between([m
+[32m+[m[32m                        start,[m
+[32m+[m[32m                        Instant.now()[m
+[32m+[m[32m                ).toMillis();[m
+[32m+[m
+[32m+[m[32m        printFinal(totalTrades, elapsedMs);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void workerLoop([m
+[32m+[m[32m            int workerId,[m
+[32m+[m[32m            int totalTrades,[m
+[32m+[m[32m            Instant deadline,[m
+[32m+[m[32m            double targetOpsPerSecond,[m
+[32m+[m[32m            int workers) {[m
+[32m+[m
+[32m+[m[32m        double workerRate =[m
+[32m+[m[32m                targetOpsPerSecond / workers;[m
+[32m+[m
+[32m+[m[32m        long nanosPerOperation =[m
+[32m+[m[32m                workerRate <= 0[m
+[32m+[m[32m                        ? 0[m
+[32m+[m[32m                        : (long)[m
+[32m+[m[32m                        (1_000_000_000.0 / workerRate);[m
+[32m+[m
+[32m+[m[32m        Socket socket = null;[m
+[32m+[m
+[32m+[m[32m        BufferedReader in = null;[m
+[32m+[m
+[32m+[m[32m        BufferedWriter out = null;[m
+[32m+[m
+[32m+[m[32m        try {[m
+[32m+[m
+[32m+[m[32m            while ([m
+[32m+[m[32m                    running.get()[m
+[32m+[m[32m                            && Instant.now().isBefore(deadline)[m
+[32m+[m[32m                            && nextTrade.get() <= totalTrades[m
+[32m+[m[32m            ) {[m
+[32m+[m
+[32m+[m[32m                int tradeNumber =[m
+[32m+[m[32m                        nextTrade.getAndIncrement();[m
+[32m+[m
+[32m+[m[32m                if (tradeNumber > totalTrades) {[m
+[32m+[m[32m                    break;[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                String tradeId =[m
+[32m+[m[32m                        String.format([m
+[32m+[m[32m                                "DEMO%06d",[m
+[32m+[m[32m                                tradeNumber[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                String ticker =[m
+[32m+[m[32m                        TICKERS.get([m
+[32m+[m[32m                                (tradeNumber - 1)[m
+[32m+[m[32m                                        % TICKERS.size()[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                int quantity =[m
+[32m+[m[32m                        100 + (tradeNumber % 901);[m
+[32m+[m
+[32m+[m[32m                double price =[m
+[32m+[m[32m                        100.00 +[m
+[32m+[m[32m                                ((tradeNumber * 37) % 10000)[m
+[32m+[m[32m                                        / 100.0;[m
+[32m+[m
+[32m+[m[32m                String requestId =[m
+[32m+[m[32m                        "DEMOREQ-" + tradeId;[m
+[32m+[m
+[32m+[m[32m                String command =[m
+[32m+[m[32m                        String.format([m
+[32m+[m[32m                                Locale.US,[m
+[32m+[m[32m                                "INSERT,%s,%s,%d,%.2f,PENDING,%s",[m
+[32m+[m[32m                                tradeId,[m
+[32m+[m[32m                                ticker,[m
+[32m+[m[32m                                quantity,[m
+[32m+[m[32m                                price,[m
+[32m+[m[32m                                requestId[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                long opStart =[m
+[32m+[m[32m                        System.nanoTime();[m
+[32m+[m
+[32m+[m[32m                try {[m
+[32m+[m
+[32m+[m[32m                    if ([m
+[32m+[m[32m                            socket == null[m
+[32m+[m[32m                                    || socket.isClosed()[m
+[32m+[m[32m                    ) {[m
+[32m+[m
+[32m+[m[32m                        Connection connection =[m
+[32m+[m[32m                                connectToLeader();[m
+[32m+[m
+[32m+[m[32m                        socket = connection.socket();[m
+[32m+[m
+[32m+[m[32m                        in = connection.in();[m
+[32m+[m
+[32m+[m[32m                        out = connection.out();[m
+[32m+[m[32m                    }[m
+[32m+[m
+[32m+[m[32m                    submitted.increment();[m
+[32m+[m
+[32m+[m[32m                    String response =[m
+[32m+[m[32m                            send([m
+[32m+[m[32m                                    socket,[m
+[32m+[m[32m                                    in,[m
+[32m+[m[32m                                    out,[m
+[32m+[m[32m                                    command[m
+[32m+[m[32m                            );[m
+[32m+[m
+[32m+[m[32m                    if (isSuccess(response)) {[m
+[32m+[m
+[32m+[m[32m                        successes.increment();[m
+[32m+[m
+[32m+[m[32m                    } else if ([m
+[32m+[m[32m                            isFollowerResponse(response)[m
+[32m+[m[32m                    ) {[m
+[32m+[m
+[32m+[m[32m                        leaderRedirects.increment();[m
+[32m+[m
+[32m+[m[32m                        closeQuietly(socket);[m
+[32m+[m
+[32m+[m[32m                        socket = null;[m
+[32m+[m
+[32m+[m[32m                        retries.increment();[m
+[32m+[m
+[32m+[m[32m                        retryTrade(command);[m
+[32m+[m
+[32m+[m[32m                    } else {[m
+[32m+[m
+[32m+[m[32m                        failures.increment();[m
+[32m+[m[32m                    }[m
+[32m+[m
+[32m+[m[32m                } catch (SocketTimeoutException e) {[m
+[32m+[m
+[32m+[m[32m                    failures.increment();[m
+[32m+[m
+[32m+[m[32m                    retries.increment();[m
+[32m+[m
+[32m+[m[32m                    closeQuietly(socket);[m
+[32m+[m
+[32m+[m[32m                    socket = null;[m
+[32m+[m
+[32m+[m[32m                } catch (IOException e) {[m
+[32m+[m
+[32m+[m[32m                    failures.increment();[m
+[32m+[m
+[32m+[m[32m                    retries.increment();[m
+[32m+[m
+[32m+[m[32m                    closeQuietly(socket);[m
+[32m+[m
+[32m+[m[32m                    socket = null;[m
+[32m+[m
+[32m+[m[32m                    sleepQuietly([m
+[32m+[m[32m                            RETRY_BACKOFF_MS[m
+[32m+[m[32m                    );[m
+[32m+[m
+[32m+[m[32m                } finally {[m
+[32m+[m
+[32m+[m[32m                    long spent =[m
+[32m+[m[32m                            System.nanoTime()[m
+[32m+[m[32m                                    - opStart;[m
+[32m+[m
+[32m+[m[32m                    long remaining =[m
+[32m+[m[32m                            nanosPerOperation[m
+[32m+[m[32m                                    - spent;[m
+[32m+[m
+[32m+[m[32m                    if (remaining > 0) {[m
+[32m+[m
+[32m+[m[32m                        LockSupport.parkNanos([m
+[32m+[m[32m                                remaining[m
+[32m+[m[32m                        );[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m        } finally {[m
+[32m+[m
+[32m+[m[32m            closeQuietly(socket);[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void retryTrade([m
+[32m+[m[32m            String command) {[m
+[32m+[m
+[32m+[m[32m        for ([m
+[32m+[m[32m                int attempt = 0;[m
+[32m+[m[32m                attempt < 2 && running.get();[m
+[32m+[m[32m                attempt++[m
+[32m+[m[32m        ) {[m
+[32m+[m
+[32m+[m[32m            Socket socket = null;[m
+[32m+[m
+[32m+[m[32m            try {[m
+[32m+[m
+[32m+[m[32m                Connection connection =[m
+[32m+[m[32m                        connectToLeader();[m
+[32m+[m
+[32m+[m[32m                socket =[m
+[32m+[m[32m                        connection.socket();[m
+[32m+[m
+[32m+[m[32m                String response =[m
+[32m+[m[32m                        send([m
+[32m+[m[32m                                socket,[m
+[32m+[m[32m                                connection.in(),[m
+[32m+[m[32m                                connection.out(),[m
+[32m+[m[32m                                command[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                if (isSuccess(response)) {[m
+[32m+[m
+[32m+[m[32m                    successes.increment();[m
+[32m+[m
+[32m+[m[32m                    return;[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                if ([m
+[32m+[m[32m                        !isFollowerResponse(response)[m
+[32m+[m[32m                ) {[m
+[32m+[m
+[32m+[m[32m                    return;[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                leaderRedirects.increment();[m
+[32m+[m
+[32m+[m[32m            } catch (IOException ignored) {[m
+[32m+[m
+[32m+[m[32m                // Caller already records the failure.[m
+[32m+[m
+[32m+[m[32m            } finally {[m
+[32m+[m
+[32m+[m[32m                closeQuietly(socket);[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            sleepQuietly([m
+[32m+[m[32m                    RETRY_BACKOFF_MS[m
+[32m+[m[32m            );[m
+[32m+[m[32m        }[m
+[32m+[m[32m        failures.increment();[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static Connection connectToLeader()[m
+[32m+[m[32m            throws IOException {[m
+[32m+[m
+[32m+[m[32m        int preferred =[m
+[32m+[m[32m                leaderPort.get();[m
+[32m+[m
+[32m+[m[32m        int[] candidates =[m
+[32m+[m[32m                candidateOrder(preferred);[m
+[32m+[m
+[32m+[m[32m        IOException last = null;[m
+[32m+[m
+[32m+[m[32m        for (int port : candidates) {[m
+[32m+[m
+[32m+[m[32m            try {[m
+[32m+[m
+[32m+[m[32m                Socket socket =[m
+[32m+[m[32m                        new Socket();[m
+[32m+[m
+[32m+[m[32m                socket.connect([m
+[32m+[m[32m                        new InetSocketAddress([m
+[32m+[m[32m                                HOST,[m
+[32m+[m[32m                                port[m
+[32m+[m[32m                        ),[m
+[32m+[m[32m                        CONNECT_TIMEOUT_MS[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m                socket.setSoTimeout([m
+[32m+[m[32m                        READ_TIMEOUT_MS[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m                BufferedReader in =[m
+[32m+[m[32m                        new BufferedReader([m
+[32m+[m[32m                                new InputStreamReader([m
+[32m+[m[32m                                        socket.getInputStream()[m
+[32m+[m[32m                                )[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                BufferedWriter out =[m
+[32m+[m[32m                        new BufferedWriter([m
+[32m+[m[32m                                new OutputStreamWriter([m
+[32m+[m[32m                                        socket.getOutputStream()[m
+[32m+[m[32m                                )[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                String probeId =[m
+[32m+[m[32m                        "LEADER_PROBE_" +[m
+[32m+[m[32m                                Thread.currentThread()[m
+[32m+[m[32m                                        .getId();[m
+[32m+[m
+[32m+[m[32m                String response =[m
+[32m+[m[32m                        send([m
+[32m+[m[32m                                socket,[m
+[32m+[m[32m                                in,[m
+[32m+[m[32m                                out,[m
+[32m+[m[32m                                "SELECT," + probeId[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                if (isFollowerResponse(response)) {[m
+[32m+[m
+[32m+[m[32m                    closeQuietly(socket);[m
+[32m+[m
+[32m+[m[32m                    continue;[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                leaderPort.set(port);[m
+[32m+[m
+[32m+[m[32m                return new Connection([m
+[32m+[m[32m                        socket,[m
+[32m+[m[32m                        in,[m
+[32m+[m[32m                        out[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m            } catch (IOException e) {[m
+[32m+[m
+[32m+[m[32m                last = e;[m
+[32m+[m[32m            }[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        throw new IOException([m
+[32m+[m[32m                "Could not connect to a current leader",[m
+[32m+[m[32m                last[m
+[32m+[m[32m        );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static int discoverLeader() {[m
+[32m+[m
+[32m+[m[32m        for (int port : NODE_PORTS) {[m
+[32m+[m
+[32m+[m[32m            Socket socket = null;[m
+[32m+[m
+[32m+[m[32m            try {[m
+[32m+[m
+[32m+[m[32m                socket =[m
+[32m+[m[32m                        new Socket();[m
+[32m+[m
+[32m+[m[32m                socket.connect([m
+[32m+[m[32m                        new InetSocketAddress([m
+[32m+[m[32m                                HOST,[m
+[32m+[m[32m                                port[m
+[32m+[m[32m                        ),[m
+[32m+[m[32m                        CONNECT_TIMEOUT_MS[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m                socket.setSoTimeout([m
+[32m+[m[32m                        READ_TIMEOUT_MS[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m                BufferedReader in =[m
+[32m+[m[32m                        new BufferedReader([m
+[32m+[m[32m                                new InputStreamReader([m
+[32m+[m[32m                                        socket.getInputStream()[m
+[32m+[m[32m                                )[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                BufferedWriter out =[m
+[32m+[m[32m                        new BufferedWriter([m
+[32m+[m[32m                                new OutputStreamWriter([m
+[32m+[m[32m                                        socket.getOutputStream()[m
+[32m+[m[32m                                )[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                String response =[m
+[32m+[m[32m                        send([m
+[32m+[m[32m                                socket,[m
+[32m+[m[32m                                in,[m
+[32m+[m[32m                                out,[m
+[32m+[m[32m                                "SELECT,LEADER_DISCOVERY_"[m
+[32m+[m[32m                                        + port[m
+[32m+[m[32m                        );[m
+[32m+[m
+[32m+[m[32m                if (!isFollowerResponse(response)) {[m
+[32m+[m
+[32m+[m[32m                    return port;[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m            } catch (IOException ignored) {[m
+[32m+[m
+[32m+[m[32m                // Try next node.[m
+[32m+[m
+[32m+[m[32m            } finally {[m
+[32m+[m
+[32m+[m[32m                closeQuietly(socket);[m
+[32m+[m[32m            }[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        return -1;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static String send([m
+[32m+[m[32m            Socket socket,[m
+[32m+[m[32m            BufferedReader in,[m
+[32m+[m[32m            BufferedWriter out,[m
+[32m+[m[32m            String command)[m
+[32m+[m[32m            throws IOException {[m
+[32m+[m
+[32m+[m[32m        out.write(command);[m
+[32m+[m
+[32m+[m[32m        out.write("\n");[m
+[32m+[m
+[32m+[m[32m        out.flush();[m
+[32m+[m
+[32m+[m[32m        String response =[m
+[32m+[m[32m                in.readLine();[m
+[32m+[m
+[32m+[m[32m        if (response == null) {[m
+[32m+[m
+[32m+[m[32m            throw new EOFException([m
+[32m+[m[32m                    "Server closed the connection"[m
+[32m+[m[32m            );[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        return response;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static boolean isSuccess([m
+[32m+[m[32m            String response) {[m
+[32m+[m
+[32m+[m[32m        if (response == null) {[m
+[32m+[m[32m            return false;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        String r =[m
+[32m+[m[32m                response.toUpperCase([m
+[32m+[m[32m                        Locale.ROOT[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m        return r.startsWith("PENDING:")[m
+[32m+[m[32m                || r.startsWith("SUCCESS:")[m
+[32m+[m[32m                || r.startsWith("OK:")[m
+[32m+[m[32m                || r.startsWith("INSERTED:")[m
+[32m+[m[32m                || r.contains("SUBMITTED");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static boolean isFollowerResponse([m
+[32m+[m[32m            String response) {[m
+[32m+[m
+[32m+[m[32m        if (response == null) {[m
+[32m+[m[32m            return false;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        String r =[m
+[32m+[m[32m                response.toUpperCase([m
+[32m+[m[32m                        Locale.ROOT[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m        return r.contains("FOLLOWER")[m
+[32m+[m[32m                || r.contains("NOT THE LEADER")[m
+[32m+[m[32m                || r.contains("REDIRECT")[m
+[32m+[m[32m                || r.contains("CANNOT GUARANTEE");   // ADD THIS LINE[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static int[] candidateOrder([m
+[32m+[m[32m            int preferred) {[m
+[32m+[m
+[32m+[m[32m        int[] result =[m
+[32m+[m[32m                new int[NODE_PORTS.length];[m
+[32m+[m
+[32m+[m[32m        int index = 0;[m
+[32m+[m
+[32m+[m[32m        result[index++] =[m
+[32m+[m[32m                preferred;[m
+[32m+[m
+[32m+[m[32m        for (int port : NODE_PORTS) {[m
+[32m+[m
+[32m+[m[32m            if (port != preferred) {[m
+[32m+[m
+[32m+[m[32m                result[index++] =[m
+[32m+[m[32m                        port;[m
+[32m+[m[32m            }[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        return result;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void printProgress([m
+[32m+[m[32m            Instant start,[m
+[32m+[m[32m            int totalTrades,[m
+[32m+[m[32m            Instant deadline) {[m
+[32m+[m
+[32m+[m[32m        long elapsedMs =[m
+[32m+[m[32m                Duration.between([m
+[32m+[m[32m                        start,[m
+[32m+[m[32m                        Instant.now()[m
+[32m+[m[32m                ).toMillis();[m
+[32m+[m
+[32m+[m[32m        double elapsedSec =[m
+[32m+[m[32m                Math.max([m
+[32m+[m[32m                        elapsedMs / 1000.0,[m
+[32m+[m[32m                        0.001[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m        long done =[m
+[32m+[m[32m                successes.sum()[m
+[32m+[m[32m                        + failures.sum();[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "  %6.1f ops/sec | submitted: %,d | success: %,d | failures: %,d | leader: %d | remaining: %,d%n",[m
+[32m+[m[32m                done / elapsedSec,[m
+[32m+[m[32m                submitted.sum(),[m
+[32m+[m[32m                successes.sum(),[m
+[32m+[m[32m                failures.sum(),[m
+[32m+[m[32m                leaderPort.get(),[m
+[32m+[m[32m                Math.max([m
+[32m+[m[32m                        0,[m
+[32m+[m[32m                        totalTrades[m
+[32m+[m[32m                                - nextTrade.get()[m
+[32m+[m[32m                                + 1[m
+[32m+[m[32m                )[m
+[32m+[m[32m        );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void printFinal([m
+[32m+[m[32m            int totalTrades,[m
+[32m+[m[32m            long elapsedMs) {[m
+[32m+[m
+[32m+[m[32m        double seconds =[m
+[32m+[m[32m                Math.max([m
+[32m+[m[32m                        elapsedMs / 1000.0,[m
+[32m+[m[32m                        0.001[m
+[32m+[m[32m                );[m
+[32m+[m
+[32m+[m[32m        long completed =[m
+[32m+[m[32m                successes.sum()[m
+[32m+[m[32m                        + failures.sum();[m
+[32m+[m
+[32m+[m[32m        System.out.println();[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╔══════════════════════════════════════════════════════════╗"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║          ZenithDB CONTINUOUS TRADE DEMO                 ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╠══════════════════════════════════════════════════════════╣"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Target trades       : %,d%n",[m
+[32m+[m[32m                totalTrades[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Duration             : %.2f sec%n",[m
+[32m+[m[32m                seconds[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Operations attempted : %,d%n",[m
+[32m+[m[32m                completed[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Successful           : %,d%n",[m
+[32m+[m[32m                successes.sum()[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Failed               : %,d%n",[m
+[32m+[m[32m                failures.sum()[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Throughput           : %.2f ops/sec%n",[m
+[32m+[m[32m                completed / seconds[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Success throughput   : %.2f ops/sec%n",[m
+[32m+[m[32m                successes.sum() / seconds[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Leader redirects     : %,d%n",[m
+[32m+[m[32m                leaderRedirects.sum()[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Retries              : %,d%n",[m
+[32m+[m[32m                retries.sum()[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╠══════════════════════════════════════════════════════════╣"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║ Grafana              : http://localhost:3000            ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║ Prometheus           : http://localhost:9090            ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╚══════════════════════════════════════════════════════════╝"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println();[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "Demo complete. Keep Grafana open to show the 2–3 minute workload."[m
+[32m+[m[32m        );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void printBanner([m
+[32m+[m[32m            int totalTrades,[m
+[32m+[m[32m            int durationSeconds,[m
+[32m+[m[32m            int workers,[m
+[32m+[m[32m            double targetOpsPerSecond) {[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╔══════════════════════════════════════════════════════════╗"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║       ZenithDB Continuous Trade Demo                    ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║       Interview-ready 2–3 minute workload               ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╠══════════════════════════════════════════════════════════╣"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Trades               : %,d%n",[m
+[32m+[m[32m                totalTrades[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Duration             : %d sec (%.1f min)%n",[m
+[32m+[m[32m                durationSeconds,[m
+[32m+[m[32m                durationSeconds / 60.0[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Workers              : %d%n",[m
+[32m+[m[32m                workers[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.printf([m
+[32m+[m[32m                Locale.US,[m
+[32m+[m[32m                "║ Target client rate   : %.1f ops/sec%n",[m
+[32m+[m[32m                targetOpsPerSecond[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║ Workload             : 100% unique INSERT trades       ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║ Leader discovery     : automatic                        ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "║ Idempotency          : unique requestId per trade       ║"[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        System.out.println([m
+[32m+[m[32m                "╚══════════════════════════════════════════════════════════╝"[m
+[32m+[m[32m        );[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static int parseInt([m
+[32m+[m[32m            String[] args,[m
+[32m+[m[32m            int index,[m
+[32m+[m[32m            int defaultValue) {[m
+[32m+[m
+[32m+[m[32m        if (args.length <= index) {[m
+[32m+[m[32m            return defaultValue;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        try {[m
+[32m+[m
+[32m+[m[32m            return Integer.parseInt([m
+[32m+[m[32m                    args[index][m
+[32m+[m[32m            );[m
+[32m+[m
+[32m+[m[32m        } catch (NumberFormatException e) {[m
+[32m+[m
+[32m+[m[32m            return defaultValue;[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void sleepQuietly([m
+[32m+[m[32m            long millis) {[m
+[32m+[m
+[32m+[m[32m        try {[m
+[32m+[m
+[32m+[m[32m            Thread.sleep(millis);[m
+[32m+[m
+[32m+[m[32m        } catch (InterruptedException e) {[m
+[32m+[m
+[32m+[m[32m            Thread.currentThread()[m
+[32m+[m[32m                    .interrupt();[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static void closeQuietly([m
+[32m+[m[32m            Socket socket) {[m
+[32m+[m
+[32m+[m[32m        if (socket == null) {[m
+[32m+[m[32m            return;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        try {[m
+[32m+[m
+[32m+[m[32m            socket.close();[m
+[32m+[m
+[32m+[m[32m        } catch (IOException ignored) {[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private record Connection([m
+[32m+[m[32m            Socket socket,[m
+[32m+[m[32m            BufferedReader in,[m
+[32m+[m[32m            BufferedWriter out) {}[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/src/main/java/com/zenith/client/ZenithLiveDemo.java b/src/main/java/com/zenith/client/ZenithLiveDemo.java[m
+[1mindex ba6a5eb..83a3263 100644[m
+[1m--- a/src/main/java/com/zenith/client/ZenithLiveDemo.java[m
+[1m+++ b/src/main/java/com/zenith/client/ZenithLiveDemo.java[m
+[36m@@ -139,6 +139,7 @@[m [mpublic class ZenithLiveDemo {[m
+         AtomicLong success = new AtomicLong(0);[m
+         AtomicLong failure = new AtomicLong(0);[m
+         AtomicLong totalLatencyNs = new AtomicLong(0);[m
+[32m+[m[32m        ConcurrentLinkedQueue<Long> latencySamplesNs = new ConcurrentLinkedQueue<>();[m
+         CountDownLatch latch = new CountDownLatch(LOAD_THREADS);[m
+ [m
+         long start = System.nanoTime();[m
+[36m@@ -177,7 +178,9 @@[m [mpublic class ZenithLiveDemo {[m
+                             out.println(cmd);[m
+                             String resp = in.readLine();[m
+                             long opEnd = System.nanoTime();[m
+[31m-                            totalLatencyNs.addAndGet(opEnd - opStart);[m
+[32m+[m[32m                            long latencyNs = opEnd - opStart;[m
+[32m+[m[32m                            totalLatencyNs.addAndGet(latencyNs);[m
+[32m+[m[32m                            latencySamplesNs.add(latencyNs);[m
+ [m
+                             if (resp != null && !resp.startsWith("ERROR") && !resp.startsWith("NOT_FOUND")) {[m
+                                 success.incrementAndGet();[m
+[36m@@ -206,13 +209,38 @@[m [mpublic class ZenithLiveDemo {[m
+ [m
+         long durationMs = (System.nanoTime() - start) / 1_000_000;[m
+         long totalOps = success.get() + failure.get();[m
+[32m+[m[32m        double durationSec = durationMs / 1000.0;[m
+         double avgLatencyMs = totalOps > 0 ? (totalLatencyNs.get() / 1_000_000.0) / totalOps : 0;[m
+ [m
+[32m+[m[32m        long[] sortedLatencyNs = latencySamplesNs.stream().mapToLong(Long::longValue).sorted().toArray();[m
+[32m+[m[32m        double p50Ms = percentileMs(sortedLatencyNs, 0.50);[m
+[32m+[m[32m        double p95Ms = percentileMs(sortedLatencyNs, 0.95);[m
+[32m+[m[32m        double p99Ms = percentileMs(sortedLatencyNs, 0.99);[m
+[32m+[m[32m        double throughput = durationSec > 0 ? totalOps / durationSec : 0;[m
+[32m+[m[32m        double successThroughput = durationSec > 0 ? success.get() / durationSec : 0;[m
+[32m+[m
+         System.out.println();[m
+[31m-        System.out.println("Duration     : " + String.format("%.2f", durationMs / 1000.0) + " sec");[m
+[31m-        System.out.println("✅ Success   : " + success.get());[m
+[31m-        System.out.println("❌ Failures  : " + failure.get());[m
+[31m-        System.out.println("Avg latency  : " + String.format("%.2f", avgLatencyMs) + " ms/op");[m
+[32m+[m[32m        System.out.println("╔══════════════════════════════════════════════════════╗");[m
+[32m+[m[32m        System.out.println("║              BENCHMARK RESULTS — LIVE LOAD          ║");[m
+[32m+[m[32m        System.out.println("╠══════════════════════════════════════════════════════╣");[m
+[32m+[m[32m        System.out.println("║  Total operations : " + String.format("%,6d", totalOps) + "                         ║");[m
+[32m+[m[32m        System.out.println("║  Duration         : " + String.format("%6.2f", durationSec) + " sec                      ║");[m
+[32m+[m[32m        System.out.println("║  Successes        : " + String.format("%,6d", success.get()) + "                         ║");[m
+[32m+[m[32m        System.out.println("║  Failures         : " + String.format("%,6d", failure.get()) + "                         ║");[m
+[32m+[m[32m        System.out.println("║  Throughput       : " + String.format("%6.2f", throughput) + " ops/sec                  ║");[m
+[32m+[m[32m        System.out.println("║  Success throughput: " + String.format("%5.2f", successThroughput) + " ops/sec                  ║");[m
+[32m+[m[32m        System.out.println("║  Avg latency      : " + String.format("%6.2f", avgLatencyMs) + " ms                       ║");[m
+[32m+[m[32m        System.out.println("║  P50 latency      : " + String.format("%6.2f", p50Ms) + " ms                       ║");[m
+[32m+[m[32m        System.out.println("║  P95 latency      : " + String.format("%6.2f", p95Ms) + " ms                       ║");[m
+[32m+[m[32m        System.out.println("║  P99 latency      : " + String.format("%6.2f", p99Ms) + " ms                       ║");[m
+[32m+[m[32m        System.out.println("╚══════════════════════════════════════════════════════╝");[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private static double percentileMs(long[] sortedNs, double percentile) {[m
+[32m+[m[32m        if (sortedNs.length == 0) return 0.0;[m
+[32m+[m[32m        int index = (int) Math.ceil(percentile * sortedNs.length) - 1;[m
+[32m+[m[32m        index = Math.max(0, Math.min(index, sortedNs.length - 1));[m
+[32m+[m[32m        return sortedNs[index] / 1_000_000.0;[m
+     }[m
+ [m
+     private static void printBanner() {[m
+[1mdiff --git a/src/main/java/com/zenith/metrics/ZenithMetrics.java b/src/main/java/com/zenith/metrics/ZenithMetrics.java[m
+[1mindex 10375e9..cf63c46 100644[m
+[1m--- a/src/main/java/com/zenith/metrics/ZenithMetrics.java[m
+[1m+++ b/src/main/java/com/zenith/metrics/ZenithMetrics.java[m
+[36m@@ -49,13 +49,22 @@[m [mpublic class ZenithMetrics {[m
+     public final AtomicLong walFlushesTotal     = new AtomicLong(0);[m
+     public final AtomicLong duplicatesBlocked   = new AtomicLong(0);[m
+ [m
+[32m+[m[32m    // ── Raft replication counters (per-node) ──[m
+[32m+[m[32m    public final AtomicLong appendEntriesReceived = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong appendEntriesSent = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong appendEntriesAccepted = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong appendEntriesRejected = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong replicationEntriesReceived = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong replicationAcksSent = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong stateMachineApplied = new AtomicLong(0);[m
+[32m+[m
+     // ── Gauges (can go up and down) ──[m
+     public final AtomicInteger activeTrades     = new AtomicInteger(0);[m
+     public final AtomicInteger isLeader         = new AtomicInteger(0); // 1=leader, 0=follower[m
+     public final AtomicInteger raftTerm         = new AtomicInteger(0);[m
+ [m
+     // ── Latency tracking ──[m
+[31m-    public final AtomicLong totalLatencyMs      = new AtomicLong(0);[m
+[32m+[m[32m    public final AtomicLong totalLatencyNanos   = new AtomicLong(0);[m
+     public final AtomicLong latencySamples      = new AtomicLong(0);[m
+ [m
+     public ZenithMetrics(String nodeId) {[m
+[36m@@ -98,7 +107,7 @@[m [mpublic class ZenithMetrics {[m
+      */[m
+     private String buildMetricsResponse() {[m
+         double avgLatency = latencySamples.get() == 0 ? 0.0[m
+[31m-                : (double) totalLatencyMs.get() / latencySamples.get();[m
+[32m+[m[32m                : ((double) totalLatencyNanos.get() / latencySamples.get()) / 1_000_000.0;[m
+ [m
+         return  "# HELP zenith_trades_total Total number of trades processed by this node\n" +[m
+                 "# TYPE zenith_trades_total counter\n" +[m
+[36m@@ -128,6 +137,34 @@[m [mpublic class ZenithMetrics {[m
+                 "# TYPE zenith_duplicates_blocked_total counter\n" +[m
+                 "zenith_duplicates_blocked_total{node=\"" + nodeId + "\"} " + duplicatesBlocked.get() + "\n" +[m
+ [m
+[32m+[m[32m                "\n# HELP zenith_append_entries_received_total AppendEntries RPCs received by this node\n" +[m
+[32m+[m[32m                "# TYPE zenith_append_entries_received_total counter\n" +[m
+[32m+[m[32m                "zenith_append_entries_received_total{node=\"" + nodeId + "\"} " + appendEntriesReceived.get() + "\n" +[m
+[32m+[m
+[32m+[m[32m                "\n# HELP zenith_append_entries_sent_total AppendEntries RPCs sent by this node\n" +[m
+[32m+[m[32m                "# TYPE zenith_append_entries_sent_total counter\n" +[m
+[32m+[m[32m                "zenith_append_entries_sent_total{node=\"" + nodeId + "\"} " + appendEntriesSent.get() + "\n" +[m
+[32m+[m
+[32m+[m[32m                "\n# HELP zenith_append_entries_accepted_total AppendEntries RPCs accepted by this node\n" +[m
+[32m+[m[32m                "# TYPE zenith_append_entries_accepted_total counter\n" +[m
+[32m+[m[32m                "zenith_append_entries_accepted_total{node=\"" + nodeId + "\"} " + appendEntriesAccepted.get() + "\n" +[m
+[32m+[m
+[32m+[m[32m                "\n# HELP zenith_append_entries_rejected_total AppendEntries RPCs rejected by this node\n" +[m
+[32m+[m[32m                "# TYPE zenith_append_entries_rejected_total counter\n" +[m
+[32m+[m[32m                "zenith_append_entries_rejected_total{node=\"" + nodeId + "\"} " + appendEntriesRejected.get() + "\n" +[m
+[32m+[m
+[32m+[m[32m                "\n# HELP zenith_replication_entries_received_total Log entries received through Raft replication\n" +[m
+[32m+[m[32m                "# TYPE zenith_replication_entries_received_total counter\n" +[m
+[32m+[m[32m                "zenith_replication_entries_received_total{node=\"" + nodeId + "\"} " + replicationEntriesReceived.get() + "\n" +[m
+[32m+[m
+[32m+[m[32m                "\n# HELP zenith_replication_acks_sent_total Successful AppendEntries acknowledgements sent by this node\n" +[m
+[32m+[m[32m                "# TYPE zenith_replication_acks_sent_total counter\n" +[m
+[32m+[m[32m                "zenith_replication_acks_sent_total{node=\"" + nodeId + "\"} " + replicationAcksSent.get() + "\n" +[m
+[32m+[m
+[32m+[m[32m                "\n# HELP zenith_state_machine_applied_total Commands applied to the state machine on this node\n" +[m
+[32m+[m[32m                "# TYPE zenith_state_machine_applied_total counter\n" +[m
+[32m+[m[32m                "zenith_state_machine_applied_total{node=\"" + nodeId + "\"} " + stateMachineApplied.get() + "\n" +[m
+[32m+[m
+                 "\n# HELP zenith_request_latency_ms Average command processing latency in milliseconds\n" +[m
+                 "# TYPE zenith_request_latency_ms gauge\n" +[m
+                 "zenith_request_latency_ms{node=\"" + nodeId + "\"} " +[m
+[36m@@ -139,10 +176,22 @@[m [mpublic class ZenithMetrics {[m
+     public void recordElection()      { electionsTotal.incrementAndGet(); }[m
+     public void recordWalFlush()      { walFlushesTotal.incrementAndGet(); }[m
+     public void recordDuplicate()     { duplicatesBlocked.incrementAndGet(); }[m
+[32m+[m[32m    public void recordAppendEntriesReceived() { appendEntriesReceived.incrementAndGet(); }[m
+[32m+[m[32m    public void recordAppendEntriesSent() { appendEntriesSent.incrementAndGet(); }[m
+[32m+[m[32m    public void recordAppendEntriesAccepted() { appendEntriesAccepted.incrementAndGet(); }[m
+[32m+[m[32m    public void recordAppendEntriesRejected() { appendEntriesRejected.incrementAndGet(); }[m
+[32m+[m[32m    public void recordReplicationEntriesReceived(int count) {[m
+[32m+[m[32m        if (count > 0) replicationEntriesReceived.addAndGet(count);[m
+[32m+[m[32m    }[m
+[32m+[m[32m    public void recordReplicationAckSent() { replicationAcksSent.incrementAndGet(); }[m
+[32m+[m[32m    public void recordStateMachineApplied() { stateMachineApplied.incrementAndGet(); }[m
+     public void setLeader(boolean b)  { isLeader.set(b ? 1 : 0); }[m
+     public void setRaftTerm(int term) { raftTerm.set(term); }[m
+[31m-    public void recordLatency(long ms) {[m
+[31m-        totalLatencyMs.addAndGet(ms);[m
+[32m+[m[32m    /** Record a command/state-machine execution latency without truncating[m
+[32m+[m[32m     * sub-millisecond operations to zero. */[m
+[32m+[m[32m    public void recordLatencyNanos(long nanos) {[m
+[32m+[m[32m        if (nanos < 0) return;[m
+[32m+[m[32m        totalLatencyNanos.addAndGet(nanos);[m
+         latencySamples.incrementAndGet();[m
+     }[m
+ }[m
+\ No newline at end of file[m
+[1mdiff --git a/src/main/java/com/zenith/raft/RaftNode.java b/src/main/java/com/zenith/raft/RaftNode.java[m
+[1mindex 16bdab8..6c2ae07 100644[m
+[1m--- a/src/main/java/com/zenith/raft/RaftNode.java[m
+[1m+++ b/src/main/java/com/zenith/raft/RaftNode.java[m
+[36m@@ -23,7 +23,7 @@[m [mpublic class RaftNode {[m
+     private final WriteAheadLog wal;[m
+     private final ZenithMetrics metrics;[m
+ [m
+[31m-    private static final int SNAPSHOT_THRESHOLD = 5;[m
+[32m+[m[32m    private static final int SNAPSHOT_THRESHOLD = 500;[m
+ [m
+     private final BlockingQueue<RaftMessage> inbox    = new LinkedBlockingQueue<>();[m
+     private final ScheduledExecutorService scheduler  = Executors.newScheduledThreadPool(2);[m
+[36m@@ -104,18 +104,18 @@[m [mpublic class RaftNode {[m
+         else System.out.println("⚠️ Unknown message: " + message.getClass().getSimpleName());[m
+     }[m
+ [m
+[31m-private void resetElectionTimer() {[m
+[31m-    if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);[m
+[31m-    // FIX: Increased timeout from 1500-3000ms to 4000-6000ms for Windows Docker[m
+[31m-    // Windows Docker Desktop adds 200-400ms container-to-container latency per hop.[m
+[31m-    // At 1500ms timeout + 500ms heartbeat interval, heartbeats were arriving just[m
+[31m-    // barely in time — any GC pause or network blip caused a false election.[m
+[31m-    // 4000-6000ms gives 8-12x heartbeat intervals of buffer before triggering election.[m
+[31m-    // Raft paper recommends: electionTimeout = 10x heartbeatInterval minimum.[m
+[31m-    // Our heartbeat = 500ms, so minimum election timeout = 5000ms.[m
+[31m-    int timeoutMs = 4000 + random.nextInt(2000);[m
+[31m-    electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);[m
+[31m-}[m
+[32m+[m[32m    private void resetElectionTimer() {[m
+[32m+[m[32m        if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);[m
+[32m+[m[32m        // FIX: Increased timeout from 1500-3000ms to 4000-6000ms for Windows Docker[m
+[32m+[m[32m        // Windows Docker Desktop adds 200-400ms container-to-container latency per hop.[m
+[32m+[m[32m        // At 1500ms timeout + 500ms heartbeat interval, heartbeats were arriving just[m
+[32m+[m[32m        // barely in time — any GC pause or network blip caused a false election.[m
+[32m+[m[32m        // 4000-6000ms gives 8-12x heartbeat intervals of buffer before triggering election.[m
+[32m+[m[32m        // Raft paper recommends: electionTimeout = 10x heartbeatInterval minimum.[m
+[32m+[m[32m        // Our heartbeat = 500ms, so minimum election timeout = 5000ms.[m
+[32m+[m[32m        int timeoutMs = 4000 + random.nextInt(2000);[m
+[32m+[m[32m        electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);[m
+[32m+[m[32m    }[m
+ [m
+     private void startElection() { inbox.offer(new TriggerElectionCommand()); }[m
+ [m
+[36m@@ -189,7 +189,7 @@[m [mprivate void resetElectionTimer() {[m
+                     metrics.setLeader(true);[m
+ [m
+                     System.out.println( "👑 Node [" + nodeId + "] IS NOW LEADER for term "[m
+[31m-                                    + state.getCurrentTerm() + "!"[m
+[32m+[m[32m                            + state.getCurrentTerm() + "!"[m
+                     );[m
+                     if (electionTimer != null)[m
+                         electionTimer.cancel(false);[m
+[36m@@ -226,16 +226,26 @@[m [mprivate void resetElectionTimer() {[m
+             int prevLogIndex = peerNextIndex - 1;[m
+             int prevLogTerm  = 0;[m
+             if (prevLogIndex >= 0) {[m
+[31m-                AppendEntriesRequest.LogEntryDTO prev = state.getLog().getEntry(prevLogIndex);[m
+[31m-                if (prev != null) prevLogTerm = prev.getTerm();[m
+[32m+[m[32m                // After log compaction, baseIndex-1 is still a real Raft log[m
+[32m+[m[32m                // position; its term is retained as baseTerm even though the[m
+[32m+[m[32m                // entry itself is no longer in the in-memory list.[m
+[32m+[m[32m                if (prevLogIndex == state.getLog().getBaseIndex() - 1) {[m
+[32m+[m[32m                    prevLogTerm = state.getLog().getBaseTerm();[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    AppendEntriesRequest.LogEntryDTO prev = state.getLog().getEntry(prevLogIndex);[m
+[32m+[m[32m                    if (prev != null) prevLogTerm = prev.getTerm();[m
+[32m+[m[32m                }[m
+             }[m
+[32m+[m[32m            metrics.recordAppendEntriesSent();[m
+             sendToPeer(peerId, new AppendEntriesRequest(nodeId, state.getCurrentTerm(),[m
+                     prevLogIndex, prevLogTerm, missing, state.getLog().getCommitIndex()));[m
+         }[m
+     }[m
+ [m
+     private void handleAppendEntriesRequest(AppendEntriesRequest req) {[m
+[32m+[m[32m        metrics.recordAppendEntriesReceived();[m
+         if (req.getTerm() < state.getCurrentTerm()) {[m
+[32m+[m[32m            metrics.recordAppendEntriesRejected();[m
+             sendToPeer(req.getSenderId(), AppendEntriesResponse.staleLeader(nodeId, state.getCurrentTerm()));[m
+             return;[m
+         }[m
+[36m@@ -249,8 +259,20 @@[m [mprivate void resetElectionTimer() {[m
+ [m
+         int prevLogIndex = req.getPrevLogIndex();[m
+         if (prevLogIndex >= 0) {[m
+[31m-            AppendEntriesRequest.LogEntryDTO localPrev = state.getLog().getEntry(prevLogIndex);[m
+[31m-            if (localPrev == null || localPrev.getTerm() != req.getPrevLogTerm()) {[m
+[32m+[m[32m            boolean prevMatches;[m
+[32m+[m
+[32m+[m[32m            // A compacted log still has a logical entry at baseIndex-1.[m
+[32m+[m[32m            // Its payload was discarded, but baseTerm is retained specifically[m
+[32m+[m[32m            // so AppendEntries can validate this boundary.[m
+[32m+[m[32m            if (prevLogIndex == state.getLog().getBaseIndex() - 1) {[m
+[32m+[m[32m                prevMatches = state.getLog().getBaseTerm() == req.getPrevLogTerm();[m
+[32m+[m[32m            } else {[m
+[32m+[m[32m                AppendEntriesRequest.LogEntryDTO localPrev = state.getLog().getEntry(prevLogIndex);[m
+[32m+[m[32m                prevMatches = localPrev != null && localPrev.getTerm() == req.getPrevLogTerm();[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            if (!prevMatches) {[m
+[32m+[m[32m                metrics.recordAppendEntriesRejected();[m
+                 sendToPeer(req.getSenderId(), AppendEntriesResponse.rejected(nodeId,[m
+                         state.getCurrentTerm(), state.getLog().getLastLogIndex()));[m
+                 return;[m
+[36m@@ -258,6 +280,7 @@[m [mprivate void resetElectionTimer() {[m
+         }[m
+ [m
+         if (!req.isHeartbeat()) {[m
+[32m+[m[32m            metrics.recordReplicationEntriesReceived(req.getEntries().size());[m
+             state.getLog().appendEntriesFrom(prevLogIndex, req.getEntries());[m
+             System.out.println("   [Follower " + nodeId + "] 💾 Appended " +[m
+                     req.getEntries().size() + " entries.");[m
+[36m@@ -267,6 +290,8 @@[m [mprivate void resetElectionTimer() {[m
+                     Math.min(req.getLeaderCommit(), state.getLog().getLastLogIndex()));[m
+             applyCommittedEntries();[m
+         }[m
+[32m+[m[32m        metrics.recordAppendEntriesAccepted();[m
+[32m+[m[32m        metrics.recordReplicationAckSent();[m
+         sendToPeer(req.getSenderId(), AppendEntriesResponse.accepted(nodeId,[m
+                 state.getCurrentTerm(), state.getLog().getLastLogIndex()));[m
+     }[m
+[36m@@ -294,15 +319,15 @@[m [mprivate void resetElectionTimer() {[m
+             nextIndex.put(resp.getSenderId(),  resp.getMatchIndex() + 1);[m
+             advanceCommitIndex();[m
+         } else {[m
+[31m-            // FIX: AppendEntriesResponse.rejected() already tells us the follower's[m
+[31m-            // real last index via getMatchIndex() — jump nextIndex straight there[m
+[31m-            // instead of decrementing by 1 per heartbeat. The old code ignored this[m
+[31m-            // hint entirely, so a follower that was N entries behind took N heartbeat[m
+[31m-            // round trips (at 200ms each) to catch up instead of one.[m
+[31m-            // matchIndex is the follower's actual last log index (-1 if its log is[m
+[31m-            // empty), so matchIndex + 1 is always the correct next index to try.[m
+[32m+[m[32m            // A rejection can mean the follower has the same last index but a[m
+[32m+[m[32m            // different term at prevLogIndex. In that case jumping to[m
+[32m+[m[32m            // followerLastIndex + 1 retries the exact same mismatch forever.[m
+[32m+[m[32m            // Move back one logical index and retry until the (index,term) pair[m
+[32m+[m[32m            // matches. The compacted boundary is handled by baseTerm above.[m
+[32m+[m[32m            int currentNext = nextIndex.getOrDefault([m
+[32m+[m[32m                    resp.getSenderId(), state.getLog().getLastLogIndex() + 1);[m
+             int base = state.getLog().getBaseIndex();[m
+[31m-            nextIndex.put(resp.getSenderId(), Math.max(base, resp.getMatchIndex() + 1));[m
+[32m+[m[32m            nextIndex.put(resp.getSenderId(), Math.max(base, currentNext - 1));[m
+         }[m
+     }[m
+ [m
+[36m@@ -329,6 +354,7 @@[m [mprivate void resetElectionTimer() {[m
+             AppendEntriesRequest.LogEntryDTO entry = state.getLog().getEntry(idx);[m
+             if (entry != null && !"INTERNAL_HB".equals(entry.getOperation())) {[m
+                 executeOnStateMachine(entry);[m
+[32m+[m[32m                metrics.recordStateMachineApplied();[m
+                 state.getLog().setLastApplied(idx);[m
+                 appliedAny = true;[m
+             } else break;[m
+[36m@@ -344,17 +370,47 @@[m [mprivate void resetElectionTimer() {[m
+             state.getLog().persistLastApplied();[m
+         }[m
+ [m
+[32m+[m[32m//        int activeLogSize = state.getLog().getLastLogIndex() - state.getLog().getBaseIndex();[m
+[32m+[m[32m//        if (activeLogSize >= SNAPSHOT_THRESHOLD) {[m
+[32m+[m[32m//            System.out.println("\n📦 [SNAPSHOT] Compacting log...");[m
+[32m+[m[32m//            wal.compact(engine);[m
+[32m+[m[32m//            state.getLog().compactLog(state.getLog().getLastApplied());[m
+[32m+[m[32m//            int newBase = state.getLog().getBaseIndex();[m
+[32m+[m[32m//            for (String peer : peers) {[m
+[32m+[m[32m//                if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);[m
+[32m+[m[32m//            }[m
+[32m+[m[32m//            String hash = com.zenith.storage.StateHasher.generateStateHash(engine);[m
+[32m+[m[32m//            System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");[m
+[32m+[m[32m//        }[m
+         int activeLogSize = state.getLog().getLastLogIndex() - state.getLog().getBaseIndex();[m
+         if (activeLogSize >= SNAPSHOT_THRESHOLD) {[m
+[31m-            System.out.println("\n📦 [SNAPSHOT] Compacting log...");[m
+[31m-            wal.compact(engine);[m
+[31m-            state.getLog().compactLog(state.getLog().getLastApplied());[m
+[31m-            int newBase = state.getLog().getBaseIndex();[m
+[31m-            for (String peer : peers) {[m
+[31m-                if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);[m
+[32m+[m[32m            int compactCeiling = state.getLog().getLastApplied();[m
+[32m+[m
+[32m+[m[32m            // Only compact up to what every follower has already confirmed[m
+[32m+[m[32m            // receiving — otherwise the leader can discard entries a lagging[m
+[32m+[m[32m            // follower still needs, and with no InstallSnapshot RPC that follower[m
+[32m+[m[32m            // is stuck rejecting AppendEntries forever. Followers compacting their[m
+[32m+[m[32m            // own log stay unguarded since that only ever touches what they[m
+[32m+[m[32m            // themselves already applied.[m
+[32m+[m[32m            if (state.getRole() == RaftRole.LEADER) {[m
+[32m+[m[32m                int safeCeiling = state.getLog().getLastLogIndex();[m
+[32m+[m[32m                for (int peerMatch : matchIndex.values()) {[m
+[32m+[m[32m                    safeCeiling = Math.min(safeCeiling, peerMatch);[m
+[32m+[m[32m                }[m
+[32m+[m[32m                compactCeiling = Math.min(compactCeiling, safeCeiling);[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            if (compactCeiling >= 0) {[m
+[32m+[m[32m                System.out.println("\n📦 [SNAPSHOT] Compacting log...");[m
+[32m+[m[32m                wal.compact(engine);[m
+[32m+[m[32m                state.getLog().compactLog(compactCeiling);[m
+[32m+[m[32m                int newBase = state.getLog().getBaseIndex();[m
+[32m+[m[32m                for (String peer : peers) {[m
+[32m+[m[32m                    if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);[m
+[32m+[m[32m                }[m
+[32m+[m[32m                String hash = com.zenith.storage.StateHasher.generateStateHash(engine);[m
+[32m+[m[32m                System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");[m
+             }[m
+[31m-            String hash = com.zenith.storage.StateHasher.generateStateHash(engine);[m
+[31m-            System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");[m
+         }[m
+     }[m
+ [m
+[36m@@ -394,8 +450,8 @@[m [mprivate void resetElectionTimer() {[m
+             }[m
+ [m
+             System.out.println("💾 [STATE MACHINE " + nodeId + "] Applied: " + parts[1]);[m
+[31m-            long durationMs = (System.nanoTime() - startTime) / 1_000_000;[m
+[31m-            metrics.recordLatency(durationMs);[m
+[32m+[m[32m            long durationNanos = System.nanoTime() - startTime;[m
+[32m+[m[32m            metrics.recordLatencyNanos(durationNanos);[m
+ [m
+         } catch (Exception e) {[m
+             System.out.println("❌ [STATE MACHINE] Failed: " + e.getMessage());[m
+[1mdiff --git a/src/main/java/com/zenith/raft/state/RaftLog.java b/src/main/java/com/zenith/raft/state/RaftLog.java[m
+[1mindex 45b8c0a..6aa619c 100644[m
+[1m--- a/src/main/java/com/zenith/raft/state/RaftLog.java[m
+[1m+++ b/src/main/java/com/zenith/raft/state/RaftLog.java[m
+[36m@@ -197,4 +197,11 @@[m [mpublic class RaftLog {[m
+     public int getLastApplied() { return lastApplied; }[m
+     public void setLastApplied(int lastApplied) { this.lastApplied = lastApplied; }[m
+     public int getBaseIndex() { return baseIndex; }[m
+[32m+[m
+[32m+[m[32m    /**[m
+[32m+[m[32m     * Term of the last entry that was compacted into the snapshot boundary.[m
+[32m+[m[32m     * When baseIndex > 0, the logical entry at baseIndex - 1 is represented[m
+[32m+[m[32m     * by baseTerm rather than remaining in the in-memory entries list.[m
+[32m+[m[32m     */[m
+[32m+[m[32m    public int getBaseTerm() { return baseTerm; }[m
+ }[m
+\ No newline at end of file[m
+[1mdiff --git a/zenithdb-fixes.patch b/zenithdb-fixes.patch[m
+[1mnew file mode 100644[m
+[1mindex 0000000..13d6ffd[m
+[1m--- /dev/null[m
+[1m+++ b/zenithdb-fixes.patch[m
+[36m@@ -0,0 +1,146 @@[m
+[32m+[m[32mdiff --git a/src/main/java/com/zenith/client/ContinuousTradeDemo.java b/src/main/java/com/zenith/client/ContinuousTradeDemo.java[m
+[32m+[m[32mindex b8ce39b..c686244 100644[m
+[32m+[m[32m--- a/src/main/java/com/zenith/client/ContinuousTradeDemo.java[m
+[32m+[m[32m+++ b/src/main/java/com/zenith/client/ContinuousTradeDemo.java[m
+[32m+[m[32m@@ -419,6 +419,13 @@ public final class ContinuousTradeDemo {[m
+[32m+[m[32m                     RETRY_BACKOFF_MS[m
+[32m+[m[32m             );[m
+[32m+[m[32m         }[m
+[32m+[m[32m+[m
+[32m+[m[32m+        // FIX: retries exhausted while still hitting a follower — this op is[m
+[32m+[m[32m+        // genuinely lost. Previously this fell off the end of the method[m
+[32m+[m[32m+        // without touching successes/failures, so the final summary silently[m
+[32m+[m[32m+        // undercounted (e.g. "Operations attempted: 0" while thousands of[m
+[32m+[m[32m+        // ops had actually been submitted and redirected).[m
+[32m+[m[32m+        failures.increment();[m
+[32m+[m[32m     }[m
+[32m+[m[41m [m
+[32m+[m[32m     private static Connection connectToLeader()[m
+[32m+[m[32m@@ -628,7 +635,12 @@ public final class ContinuousTradeDemo {[m
+[32m+[m[41m [m
+[32m+[m[32m         return r.contains("FOLLOWER")[m
+[32m+[m[32m                 || r.contains("NOT THE LEADER")[m
+[32m+[m[32m-                || r.contains("REDIRECT");[m
+[32m+[m[32m+                || r.contains("REDIRECT")[m
+[32m+[m[32m+                || r.contains("CANNOT GUARANTEE"); // FIX: SELECT-based leader probes get this[m
+[32m+[m[32m+                // message (not "FOLLOWER") from a genuine follower, or from a leader whose[m
+[32m+[m[32m+                // read-lease isn't confirmed yet — without this, connectToLeader() mistook[m
+[32m+[m[32m+                // that ambiguous response for "found the leader" and could permanently latch[m
+[32m+[m[32m+                // onto a follower.[m
+[32m+[m[32m     }[m
+[32m+[m[41m [m
+[32m+[m[32m     private static int[] candidateOrder([m
+[32m+[m[32mdiff --git a/src/main/java/com/zenith/client/ZenithLiveDemo.java b/src/main/java/com/zenith/client/ZenithLiveDemo.java[m
+[32m+[m[32mindex 0e84c1b..c64f39e 100644[m
+[32m+[m[32m--- a/src/main/java/com/zenith/client/ZenithLiveDemo.java[m
+[32m+[m[32m+++ b/src/main/java/com/zenith/client/ZenithLiveDemo.java[m
+[32m+[m[32m@@ -45,7 +45,8 @@ public class ZenithLiveDemo {[m
+[32m+[m[41m [m
+[32m+[m[32m     private static final int LOAD_THREADS     = 10;[m
+[32m+[m[32m     private static final int OPS_PER_THREAD   = 300;  // 3,000 total ops in the load burst[m
+[32m+[m[32m-    private static final int PACE_MS          = 50;   // delay between each op per thread[m
+[32m+[m[32m+    private static final int PACE_MS          = 50;   // delay between each op per thread[m
+[32m+[m[32m+    private static final int READ_LAG_OPS     = 10;   // how many ops to wait before reading/updating a just-written key (see kind==1 comment below)[m
+[32m+[m[41m [m
+[32m+[m[32m     public static void main(String[] args) throws Exception {[m
+[32m+[m[32m         printBanner();[m
+[32m+[m[32m@@ -159,10 +160,19 @@ public class ZenithLiveDemo {[m
+[32m+[m[32m                             String reqId   = "LOADREQ-" + threadId + "-" + op;[m
+[32m+[m[32m                             cmd = "INSERT," + tradeId + ",MSFT,10," + (100 + op) + ".00,PENDING," + reqId;[m
+[32m+[m[32m                         } else if (kind == 1) {[m
+[32m+[m[32m-                            cmd = "SELECT,LOAD-" + threadId + "-" + Math.max(0, op - 1);[m
+[32m+[m[32m+                            // FIX: was "op - 1" — reading a key one iteration after its own[m
+[32m+[m[32m+                            // INSERT races the async Raft commit (INSERT only returns[m
+[32m+[m[32m+                            // "PENDING", the write isn't applied yet) and was getting counted[m
+[32m+[m[32m+                            // as a failure below purely because it read too early, not because[m
+[32m+[m[32m+                            // anything was actually broken — the exact same benign race Phase 1[m
+[32m+[m[32m+                            // demonstrates on purpose (INSERT -> immediate SELECT -> NOT_FOUND,[m
+[32m+[m[32m+                            // then a later SELECT -> FOUND). READ_LAG_OPS puts real wall-clock[m
+[32m+[m[32m+                            // time (READ_LAG_OPS * PACE_MS) between a key's write and its first[m
+[32m+[m[32m+                            // read so this benchmark measures actual failures, not read timing.[m
+[32m+[m[32m+                            cmd = "SELECT,LOAD-" + threadId + "-" + Math.max(0, op - READ_LAG_OPS);[m
+[32m+[m[32m                         } else {[m
+[32m+[m[32m                             String reqId = "LOADUPD-" + threadId + "-" + op;[m
+[32m+[m[32m-                            cmd = "UPDATE,LOAD-" + threadId + "-" + Math.max(0, op - 2) + ",EXECUTED," + reqId;[m
+[32m+[m[32m+                            cmd = "UPDATE,LOAD-" + threadId + "-" + Math.max(0, op - READ_LAG_OPS) + ",EXECUTED," + reqId;[m
+[32m+[m[32m                         }[m
+[32m+[m[41m [m
+[32m+[m[32m                         try {[m
+[32m+[m[32mdiff --git a/src/main/java/com/zenith/raft/RaftNode.java b/src/main/java/com/zenith/raft/RaftNode.java[m
+[32m+[m[32mindex a159105..82882fd 100644[m
+[32m+[m[32m--- a/src/main/java/com/zenith/raft/RaftNode.java[m
+[32m+[m[32m+++ b/src/main/java/com/zenith/raft/RaftNode.java[m
+[32m+[m[32m@@ -23,7 +23,26 @@ public class RaftNode {[m
+[32m+[m[32m     private final WriteAheadLog wal;[m
+[32m+[m[32m     private final ZenithMetrics metrics;[m
+[32m+[m[41m [m
+[32m+[m[32m-    private static final int SNAPSHOT_THRESHOLD = 5;[m
+[32m+[m[32m+    // FIX (root cause of the "throughput/WAL/duplicates flatline under load,[m
+[32m+[m[32m+    // ~33% failure rate, only-one-node-looks-alive" bug): this was 5. At any[m
+[32m+[m[32m+    // real load rate, a follower falls more than 5 entries behind the leader[m
+[32m+[m[32m+    // routinely (heartbeats only go out every 200ms, and a rejected[m
+[32m+[m[32m+    // AppendEntries only backs nextIndex off by 1 per round-trip). Once a[m
+[32m+[m[32m+    // follower's nextIndex lags behind the LEADER's baseIndex, the leader has[m
+[32m+[m[32m+    // already discarded (compacted) the entries that follower still needs,[m
+[32m+[m[32m+    // and this implementation has no InstallSnapshot RPC to catch it up — so[m
+[32m+[m[32m+    // that follower is permanently stuck rejecting AppendEntries forever.[m
+[32m+[m[32m+    // With 3 nodes and majority=2, once BOTH followers get stuck this way[m
+[32m+[m[32m+    // (easy under sustained load since they fall behind around the same[m
+[32m+[m[32m+    // time), the LEADER can no longer reach majority on ANY new entry either[m
+[32m+[m[32m+    // — so commitIndex freezes cluster-wide and nothing ever applies again:[m
+[32m+[m[32m+    // zenith_trades_total stays flat, WAL flushes stop, duplicates checks[m
+[32m+[m[32m+    // never run (they happen at apply time), and AppendEntries[m
+[32m+[m[32m+    // rejected/sec tracks sent/sec 1:1. Raising the threshold buys headroom;[m
+[32m+[m[32m+    // the real fix is the matchIndex-aware guard added below, which makes it[m
+[32m+[m[32m+    // structurally impossible for the leader to discard anything a follower[m
+[32m+[m[32m+    // hasn't already received.[m
+[32m+[m[32m+    private static final int SNAPSHOT_THRESHOLD = 500;[m
+[32m+[m[41m [m
+[32m+[m[32m     private final BlockingQueue<RaftMessage> inbox    = new LinkedBlockingQueue<>();[m
+[32m+[m[32m     private final ScheduledExecutorService scheduler  = Executors.newScheduledThreadPool(2);[m
+[32m+[m[32m@@ -372,15 +391,37 @@ public class RaftNode {[m
+[32m+[m[41m [m
+[32m+[m[32m         int activeLogSize = state.getLog().getLastLogIndex() - state.getLog().getBaseIndex();[m
+[32m+[m[32m         if (activeLogSize >= SNAPSHOT_THRESHOLD) {[m
+[32m+[m[32m-            System.out.println("\n📦 [SNAPSHOT] Compacting log...");[m
+[32m+[m[32m-            wal.compact(engine);[m
+[32m+[m[32m-            state.getLog().compactLog(state.getLog().getLastApplied());[m
+[32m+[m[32m-            int newBase = state.getLog().getBaseIndex();[m
+[32m+[m[32m-            for (String peer : peers) {[m
+[32m+[m[32m-                if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);[m
+[32m+[m[32m+            int compactCeiling = state.getLog().getLastApplied();[m
+[32m+[m[32m+[m
+[32m+[m[32m+            // FIX: never let the leader discard log entries a follower hasn't[m
+[32m+[m[32m+            // replicated yet. A follower compacting its own log only ever[m
+[32m+[m[32m+            // touches entries it already applied itself (nothing else in the[m
+[32m+[m[32m+            // cluster depends on that), so this guard is scoped to the leader.[m
+[32m+[m[32m+            // Without it, compaction races ahead of a lagging follower's[m
+[32m+[m[32m+            // nextIndex, that follower permanently loses the ability to catch[m
+[32m+[m[32m+            // up (no InstallSnapshot RPC exists here to rescue it), and once[m
+[32m+[m[32m+            // enough followers get stuck the leader can't reach majority on[m
+[32m+[m[32m+            // new entries either — see SNAPSHOT_THRESHOLD comment above for[m
+[32m+[m[32m+            // the full failure chain this was causing.[m
+[32m+[m[32m+            if (state.getRole() == RaftRole.LEADER) {[m
+[32m+[m[32m+                int safeCeiling = state.getLog().getLastLogIndex();[m
+[32m+[m[32m+                for (int peerMatch : matchIndex.values()) {[m
+[32m+[m[32m+                    safeCeiling = Math.min(safeCeiling, peerMatch);[m
+[32m+[m[32m+                }[m
+[32m+[m[32m+                compactCeiling = Math.min(compactCeiling, safeCeiling);[m
+[32m+[m[32m+            }[m
+[32m+[m[32m+[m
+[32m+[m[32m+            if (compactCeiling >= 0) {[m
+[32m+[m[32m+                System.out.println("\n📦 [SNAPSHOT] Compacting log...");[m
+[32m+[m[32m+                wal.compact(engine);[m
+[32m+[m[32m+                state.getLog().compactLog(compactCeiling);[m
+[32m+[m[32m+                int newBase = state.getLog().getBaseIndex();[m
+[32m+[m[32m+                for (String peer : peers) {[m
+[32m+[m[32m+                    if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);[m
+[32m+[m[32m+                }[m
+[32m+[m[32m+                String hash = com.zenith.storage.StateHasher.generateStateHash(engine);[m
+[32m+[m[32m+                System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");[m
+[32m+[m[32m             }[m
+[32m+[m[32m-            String hash = com.zenith.storage.StateHasher.generateStateHash(engine);[m
+[32m+[m[32m-            System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");[m
+[32m+[m[32m         }[m
+[32m+[m[32m     }[m
+[32m+[m[41m [m

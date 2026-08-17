@@ -49,13 +49,22 @@ public class ZenithMetrics {
     public final AtomicLong walFlushesTotal     = new AtomicLong(0);
     public final AtomicLong duplicatesBlocked   = new AtomicLong(0);
 
+    // ── Raft replication counters (per-node) ──
+    public final AtomicLong appendEntriesReceived = new AtomicLong(0);
+    public final AtomicLong appendEntriesSent = new AtomicLong(0);
+    public final AtomicLong appendEntriesAccepted = new AtomicLong(0);
+    public final AtomicLong appendEntriesRejected = new AtomicLong(0);
+    public final AtomicLong replicationEntriesReceived = new AtomicLong(0);
+    public final AtomicLong replicationAcksSent = new AtomicLong(0);
+    public final AtomicLong stateMachineApplied = new AtomicLong(0);
+
     // ── Gauges (can go up and down) ──
     public final AtomicInteger activeTrades     = new AtomicInteger(0);
     public final AtomicInteger isLeader         = new AtomicInteger(0); // 1=leader, 0=follower
     public final AtomicInteger raftTerm         = new AtomicInteger(0);
 
     // ── Latency tracking ──
-    public final AtomicLong totalLatencyMs      = new AtomicLong(0);
+    public final AtomicLong totalLatencyNanos   = new AtomicLong(0);
     public final AtomicLong latencySamples      = new AtomicLong(0);
 
     public ZenithMetrics(String nodeId) {
@@ -98,7 +107,7 @@ public class ZenithMetrics {
      */
     private String buildMetricsResponse() {
         double avgLatency = latencySamples.get() == 0 ? 0.0
-                : (double) totalLatencyMs.get() / latencySamples.get();
+                : ((double) totalLatencyNanos.get() / latencySamples.get()) / 1_000_000.0;
 
         return  "# HELP zenith_trades_total Total number of trades processed by this node\n" +
                 "# TYPE zenith_trades_total counter\n" +
@@ -128,6 +137,34 @@ public class ZenithMetrics {
                 "# TYPE zenith_duplicates_blocked_total counter\n" +
                 "zenith_duplicates_blocked_total{node=\"" + nodeId + "\"} " + duplicatesBlocked.get() + "\n" +
 
+                "\n# HELP zenith_append_entries_received_total AppendEntries RPCs received by this node\n" +
+                "# TYPE zenith_append_entries_received_total counter\n" +
+                "zenith_append_entries_received_total{node=\"" + nodeId + "\"} " + appendEntriesReceived.get() + "\n" +
+
+                "\n# HELP zenith_append_entries_sent_total AppendEntries RPCs sent by this node\n" +
+                "# TYPE zenith_append_entries_sent_total counter\n" +
+                "zenith_append_entries_sent_total{node=\"" + nodeId + "\"} " + appendEntriesSent.get() + "\n" +
+
+                "\n# HELP zenith_append_entries_accepted_total AppendEntries RPCs accepted by this node\n" +
+                "# TYPE zenith_append_entries_accepted_total counter\n" +
+                "zenith_append_entries_accepted_total{node=\"" + nodeId + "\"} " + appendEntriesAccepted.get() + "\n" +
+
+                "\n# HELP zenith_append_entries_rejected_total AppendEntries RPCs rejected by this node\n" +
+                "# TYPE zenith_append_entries_rejected_total counter\n" +
+                "zenith_append_entries_rejected_total{node=\"" + nodeId + "\"} " + appendEntriesRejected.get() + "\n" +
+
+                "\n# HELP zenith_replication_entries_received_total Log entries received through Raft replication\n" +
+                "# TYPE zenith_replication_entries_received_total counter\n" +
+                "zenith_replication_entries_received_total{node=\"" + nodeId + "\"} " + replicationEntriesReceived.get() + "\n" +
+
+                "\n# HELP zenith_replication_acks_sent_total Successful AppendEntries acknowledgements sent by this node\n" +
+                "# TYPE zenith_replication_acks_sent_total counter\n" +
+                "zenith_replication_acks_sent_total{node=\"" + nodeId + "\"} " + replicationAcksSent.get() + "\n" +
+
+                "\n# HELP zenith_state_machine_applied_total Commands applied to the state machine on this node\n" +
+                "# TYPE zenith_state_machine_applied_total counter\n" +
+                "zenith_state_machine_applied_total{node=\"" + nodeId + "\"} " + stateMachineApplied.get() + "\n" +
+
                 "\n# HELP zenith_request_latency_ms Average command processing latency in milliseconds\n" +
                 "# TYPE zenith_request_latency_ms gauge\n" +
                 "zenith_request_latency_ms{node=\"" + nodeId + "\"} " +
@@ -139,10 +176,22 @@ public class ZenithMetrics {
     public void recordElection()      { electionsTotal.incrementAndGet(); }
     public void recordWalFlush()      { walFlushesTotal.incrementAndGet(); }
     public void recordDuplicate()     { duplicatesBlocked.incrementAndGet(); }
+    public void recordAppendEntriesReceived() { appendEntriesReceived.incrementAndGet(); }
+    public void recordAppendEntriesSent() { appendEntriesSent.incrementAndGet(); }
+    public void recordAppendEntriesAccepted() { appendEntriesAccepted.incrementAndGet(); }
+    public void recordAppendEntriesRejected() { appendEntriesRejected.incrementAndGet(); }
+    public void recordReplicationEntriesReceived(int count) {
+        if (count > 0) replicationEntriesReceived.addAndGet(count);
+    }
+    public void recordReplicationAckSent() { replicationAcksSent.incrementAndGet(); }
+    public void recordStateMachineApplied() { stateMachineApplied.incrementAndGet(); }
     public void setLeader(boolean b)  { isLeader.set(b ? 1 : 0); }
     public void setRaftTerm(int term) { raftTerm.set(term); }
-    public void recordLatency(long ms) {
-        totalLatencyMs.addAndGet(ms);
+    /** Record a command/state-machine execution latency without truncating
+     * sub-millisecond operations to zero. */
+    public void recordLatencyNanos(long nanos) {
+        if (nanos < 0) return;
+        totalLatencyNanos.addAndGet(nanos);
         latencySamples.incrementAndGet();
     }
 }

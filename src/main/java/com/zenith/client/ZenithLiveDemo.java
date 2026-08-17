@@ -139,6 +139,7 @@ public class ZenithLiveDemo {
         AtomicLong success = new AtomicLong(0);
         AtomicLong failure = new AtomicLong(0);
         AtomicLong totalLatencyNs = new AtomicLong(0);
+        ConcurrentLinkedQueue<Long> latencySamplesNs = new ConcurrentLinkedQueue<>();
         CountDownLatch latch = new CountDownLatch(LOAD_THREADS);
 
         long start = System.nanoTime();
@@ -177,7 +178,9 @@ public class ZenithLiveDemo {
                             out.println(cmd);
                             String resp = in.readLine();
                             long opEnd = System.nanoTime();
-                            totalLatencyNs.addAndGet(opEnd - opStart);
+                            long latencyNs = opEnd - opStart;
+                            totalLatencyNs.addAndGet(latencyNs);
+                            latencySamplesNs.add(latencyNs);
 
                             if (resp != null && !resp.startsWith("ERROR") && !resp.startsWith("NOT_FOUND")) {
                                 success.incrementAndGet();
@@ -206,13 +209,38 @@ public class ZenithLiveDemo {
 
         long durationMs = (System.nanoTime() - start) / 1_000_000;
         long totalOps = success.get() + failure.get();
+        double durationSec = durationMs / 1000.0;
         double avgLatencyMs = totalOps > 0 ? (totalLatencyNs.get() / 1_000_000.0) / totalOps : 0;
 
+        long[] sortedLatencyNs = latencySamplesNs.stream().mapToLong(Long::longValue).sorted().toArray();
+        double p50Ms = percentileMs(sortedLatencyNs, 0.50);
+        double p95Ms = percentileMs(sortedLatencyNs, 0.95);
+        double p99Ms = percentileMs(sortedLatencyNs, 0.99);
+        double throughput = durationSec > 0 ? totalOps / durationSec : 0;
+        double successThroughput = durationSec > 0 ? success.get() / durationSec : 0;
+
         System.out.println();
-        System.out.println("Duration     : " + String.format("%.2f", durationMs / 1000.0) + " sec");
-        System.out.println("✅ Success   : " + success.get());
-        System.out.println("❌ Failures  : " + failure.get());
-        System.out.println("Avg latency  : " + String.format("%.2f", avgLatencyMs) + " ms/op");
+        System.out.println("╔══════════════════════════════════════════════════════╗");
+        System.out.println("║              BENCHMARK RESULTS — LIVE LOAD          ║");
+        System.out.println("╠══════════════════════════════════════════════════════╣");
+        System.out.println("║  Total operations : " + String.format("%,6d", totalOps) + "                         ║");
+        System.out.println("║  Duration         : " + String.format("%6.2f", durationSec) + " sec                      ║");
+        System.out.println("║  Successes        : " + String.format("%,6d", success.get()) + "                         ║");
+        System.out.println("║  Failures         : " + String.format("%,6d", failure.get()) + "                         ║");
+        System.out.println("║  Throughput       : " + String.format("%6.2f", throughput) + " ops/sec                  ║");
+        System.out.println("║  Success throughput: " + String.format("%5.2f", successThroughput) + " ops/sec                  ║");
+        System.out.println("║  Avg latency      : " + String.format("%6.2f", avgLatencyMs) + " ms                       ║");
+        System.out.println("║  P50 latency      : " + String.format("%6.2f", p50Ms) + " ms                       ║");
+        System.out.println("║  P95 latency      : " + String.format("%6.2f", p95Ms) + " ms                       ║");
+        System.out.println("║  P99 latency      : " + String.format("%6.2f", p99Ms) + " ms                       ║");
+        System.out.println("╚══════════════════════════════════════════════════════╝");
+    }
+
+    private static double percentileMs(long[] sortedNs, double percentile) {
+        if (sortedNs.length == 0) return 0.0;
+        int index = (int) Math.ceil(percentile * sortedNs.length) - 1;
+        index = Math.max(0, Math.min(index, sortedNs.length - 1));
+        return sortedNs[index] / 1_000_000.0;
     }
 
     private static void printBanner() {

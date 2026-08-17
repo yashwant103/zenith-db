@@ -23,7 +23,7 @@ public class RaftNode {
     private final WriteAheadLog wal;
     private final ZenithMetrics metrics;
 
-    private static final int SNAPSHOT_THRESHOLD = 5;
+    private static final int SNAPSHOT_THRESHOLD = 500;
 
     private final BlockingQueue<RaftMessage> inbox    = new LinkedBlockingQueue<>();
     private final ScheduledExecutorService scheduler  = Executors.newScheduledThreadPool(2);
@@ -104,18 +104,18 @@ public class RaftNode {
         else System.out.println("⚠️ Unknown message: " + message.getClass().getSimpleName());
     }
 
-private void resetElectionTimer() {
-    if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);
-    // FIX: Increased timeout from 1500-3000ms to 4000-6000ms for Windows Docker
-    // Windows Docker Desktop adds 200-400ms container-to-container latency per hop.
-    // At 1500ms timeout + 500ms heartbeat interval, heartbeats were arriving just
-    // barely in time — any GC pause or network blip caused a false election.
-    // 4000-6000ms gives 8-12x heartbeat intervals of buffer before triggering election.
-    // Raft paper recommends: electionTimeout = 10x heartbeatInterval minimum.
-    // Our heartbeat = 500ms, so minimum election timeout = 5000ms.
-    int timeoutMs = 4000 + random.nextInt(2000);
-    electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);
-}
+    private void resetElectionTimer() {
+        if (electionTimer != null && !electionTimer.isDone()) electionTimer.cancel(false);
+        // FIX: Increased timeout from 1500-3000ms to 4000-6000ms for Windows Docker
+        // Windows Docker Desktop adds 200-400ms container-to-container latency per hop.
+        // At 1500ms timeout + 500ms heartbeat interval, heartbeats were arriving just
+        // barely in time — any GC pause or network blip caused a false election.
+        // 4000-6000ms gives 8-12x heartbeat intervals of buffer before triggering election.
+        // Raft paper recommends: electionTimeout = 10x heartbeatInterval minimum.
+        // Our heartbeat = 500ms, so minimum election timeout = 5000ms.
+        int timeoutMs = 4000 + random.nextInt(2000);
+        electionTimer = scheduler.schedule(this::startElection, timeoutMs, TimeUnit.MILLISECONDS);
+    }
 
     private void startElection() { inbox.offer(new TriggerElectionCommand()); }
 
@@ -189,7 +189,7 @@ private void resetElectionTimer() {
                     metrics.setLeader(true);
 
                     System.out.println( "👑 Node [" + nodeId + "] IS NOW LEADER for term "
-                                    + state.getCurrentTerm() + "!"
+                            + state.getCurrentTerm() + "!"
                     );
                     if (electionTimer != null)
                         electionTimer.cancel(false);
@@ -226,16 +226,26 @@ private void resetElectionTimer() {
             int prevLogIndex = peerNextIndex - 1;
             int prevLogTerm  = 0;
             if (prevLogIndex >= 0) {
-                AppendEntriesRequest.LogEntryDTO prev = state.getLog().getEntry(prevLogIndex);
-                if (prev != null) prevLogTerm = prev.getTerm();
+                // After log compaction, baseIndex-1 is still a real Raft log
+                // position; its term is retained as baseTerm even though the
+                // entry itself is no longer in the in-memory list.
+                if (prevLogIndex == state.getLog().getBaseIndex() - 1) {
+                    prevLogTerm = state.getLog().getBaseTerm();
+                } else {
+                    AppendEntriesRequest.LogEntryDTO prev = state.getLog().getEntry(prevLogIndex);
+                    if (prev != null) prevLogTerm = prev.getTerm();
+                }
             }
+            metrics.recordAppendEntriesSent();
             sendToPeer(peerId, new AppendEntriesRequest(nodeId, state.getCurrentTerm(),
                     prevLogIndex, prevLogTerm, missing, state.getLog().getCommitIndex()));
         }
     }
 
     private void handleAppendEntriesRequest(AppendEntriesRequest req) {
+        metrics.recordAppendEntriesReceived();
         if (req.getTerm() < state.getCurrentTerm()) {
+            metrics.recordAppendEntriesRejected();
             sendToPeer(req.getSenderId(), AppendEntriesResponse.staleLeader(nodeId, state.getCurrentTerm()));
             return;
         }
@@ -249,8 +259,20 @@ private void resetElectionTimer() {
 
         int prevLogIndex = req.getPrevLogIndex();
         if (prevLogIndex >= 0) {
-            AppendEntriesRequest.LogEntryDTO localPrev = state.getLog().getEntry(prevLogIndex);
-            if (localPrev == null || localPrev.getTerm() != req.getPrevLogTerm()) {
+            boolean prevMatches;
+
+            // A compacted log still has a logical entry at baseIndex-1.
+            // Its payload was discarded, but baseTerm is retained specifically
+            // so AppendEntries can validate this boundary.
+            if (prevLogIndex == state.getLog().getBaseIndex() - 1) {
+                prevMatches = state.getLog().getBaseTerm() == req.getPrevLogTerm();
+            } else {
+                AppendEntriesRequest.LogEntryDTO localPrev = state.getLog().getEntry(prevLogIndex);
+                prevMatches = localPrev != null && localPrev.getTerm() == req.getPrevLogTerm();
+            }
+
+            if (!prevMatches) {
+                metrics.recordAppendEntriesRejected();
                 sendToPeer(req.getSenderId(), AppendEntriesResponse.rejected(nodeId,
                         state.getCurrentTerm(), state.getLog().getLastLogIndex()));
                 return;
@@ -258,6 +280,7 @@ private void resetElectionTimer() {
         }
 
         if (!req.isHeartbeat()) {
+            metrics.recordReplicationEntriesReceived(req.getEntries().size());
             state.getLog().appendEntriesFrom(prevLogIndex, req.getEntries());
             System.out.println("   [Follower " + nodeId + "] 💾 Appended " +
                     req.getEntries().size() + " entries.");
@@ -267,6 +290,8 @@ private void resetElectionTimer() {
                     Math.min(req.getLeaderCommit(), state.getLog().getLastLogIndex()));
             applyCommittedEntries();
         }
+        metrics.recordAppendEntriesAccepted();
+        metrics.recordReplicationAckSent();
         sendToPeer(req.getSenderId(), AppendEntriesResponse.accepted(nodeId,
                 state.getCurrentTerm(), state.getLog().getLastLogIndex()));
     }
@@ -294,15 +319,15 @@ private void resetElectionTimer() {
             nextIndex.put(resp.getSenderId(),  resp.getMatchIndex() + 1);
             advanceCommitIndex();
         } else {
-            // FIX: AppendEntriesResponse.rejected() already tells us the follower's
-            // real last index via getMatchIndex() — jump nextIndex straight there
-            // instead of decrementing by 1 per heartbeat. The old code ignored this
-            // hint entirely, so a follower that was N entries behind took N heartbeat
-            // round trips (at 200ms each) to catch up instead of one.
-            // matchIndex is the follower's actual last log index (-1 if its log is
-            // empty), so matchIndex + 1 is always the correct next index to try.
+            // A rejection can mean the follower has the same last index but a
+            // different term at prevLogIndex. In that case jumping to
+            // followerLastIndex + 1 retries the exact same mismatch forever.
+            // Move back one logical index and retry until the (index,term) pair
+            // matches. The compacted boundary is handled by baseTerm above.
+            int currentNext = nextIndex.getOrDefault(
+                    resp.getSenderId(), state.getLog().getLastLogIndex() + 1);
             int base = state.getLog().getBaseIndex();
-            nextIndex.put(resp.getSenderId(), Math.max(base, resp.getMatchIndex() + 1));
+            nextIndex.put(resp.getSenderId(), Math.max(base, currentNext - 1));
         }
     }
 
@@ -329,6 +354,7 @@ private void resetElectionTimer() {
             AppendEntriesRequest.LogEntryDTO entry = state.getLog().getEntry(idx);
             if (entry != null && !"INTERNAL_HB".equals(entry.getOperation())) {
                 executeOnStateMachine(entry);
+                metrics.recordStateMachineApplied();
                 state.getLog().setLastApplied(idx);
                 appliedAny = true;
             } else break;
@@ -344,17 +370,47 @@ private void resetElectionTimer() {
             state.getLog().persistLastApplied();
         }
 
+//        int activeLogSize = state.getLog().getLastLogIndex() - state.getLog().getBaseIndex();
+//        if (activeLogSize >= SNAPSHOT_THRESHOLD) {
+//            System.out.println("\n📦 [SNAPSHOT] Compacting log...");
+//            wal.compact(engine);
+//            state.getLog().compactLog(state.getLog().getLastApplied());
+//            int newBase = state.getLog().getBaseIndex();
+//            for (String peer : peers) {
+//                if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);
+//            }
+//            String hash = com.zenith.storage.StateHasher.generateStateHash(engine);
+//            System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");
+//        }
         int activeLogSize = state.getLog().getLastLogIndex() - state.getLog().getBaseIndex();
         if (activeLogSize >= SNAPSHOT_THRESHOLD) {
-            System.out.println("\n📦 [SNAPSHOT] Compacting log...");
-            wal.compact(engine);
-            state.getLog().compactLog(state.getLog().getLastApplied());
-            int newBase = state.getLog().getBaseIndex();
-            for (String peer : peers) {
-                if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);
+            int compactCeiling = state.getLog().getLastApplied();
+
+            // Only compact up to what every follower has already confirmed
+            // receiving — otherwise the leader can discard entries a lagging
+            // follower still needs, and with no InstallSnapshot RPC that follower
+            // is stuck rejecting AppendEntries forever. Followers compacting their
+            // own log stay unguarded since that only ever touches what they
+            // themselves already applied.
+            if (state.getRole() == RaftRole.LEADER) {
+                int safeCeiling = state.getLog().getLastLogIndex();
+                for (int peerMatch : matchIndex.values()) {
+                    safeCeiling = Math.min(safeCeiling, peerMatch);
+                }
+                compactCeiling = Math.min(compactCeiling, safeCeiling);
             }
-            String hash = com.zenith.storage.StateHasher.generateStateHash(engine);
-            System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");
+
+            if (compactCeiling >= 0) {
+                System.out.println("\n📦 [SNAPSHOT] Compacting log...");
+                wal.compact(engine);
+                state.getLog().compactLog(compactCeiling);
+                int newBase = state.getLog().getBaseIndex();
+                for (String peer : peers) {
+                    if (nextIndex.getOrDefault(peer, 0) < newBase) nextIndex.put(peer, newBase);
+                }
+                String hash = com.zenith.storage.StateHasher.generateStateHash(engine);
+                System.out.println("🔐 [ANTI-ENTROPY] Hash: " + hash.substring(0, 16) + "...");
+            }
         }
     }
 
@@ -394,8 +450,8 @@ private void resetElectionTimer() {
             }
 
             System.out.println("💾 [STATE MACHINE " + nodeId + "] Applied: " + parts[1]);
-            long durationMs = (System.nanoTime() - startTime) / 1_000_000;
-            metrics.recordLatency(durationMs);
+            long durationNanos = System.nanoTime() - startTime;
+            metrics.recordLatencyNanos(durationNanos);
 
         } catch (Exception e) {
             System.out.println("❌ [STATE MACHINE] Failed: " + e.getMessage());
